@@ -1,0 +1,11 @@
+{
+  "name": "familyapp",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev:mobile": "corepack pnpm --filter @familyapp/mobile start",
+    "dev:api": "corepack pnpm --filter @familyapp/api dev",
+    "typecheck": "corepack pnpm -r typecheck",
+    "lint": "corepack pnpm -r lint"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@familyapp/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@familyapp/config": "workspace:*",
+    "@familyapp/shared": "workspace:*",
+    "expo": "^53.0.0",
+    "expo-router": "^5.0.0",
+    "query-string": "^9.1.1",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-native": "0.79.2",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-web": "^0.20.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.0.10",
+    "typescript": "~5.8.3"
+  }
+}
