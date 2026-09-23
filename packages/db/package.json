@@ -1,0 +1,25 @@
+{
+  "name": "@familyapp/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "node ./scripts/require-database-url.mjs && drizzle-kit migrate",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.1",
+    "drizzle-orm": "^0.44.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "drizzle-kit": "^0.31.4",
+    "typescript": "~5.8.3"
+  }
+}

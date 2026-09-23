@@ -1,0 +1,5 @@
+# Local Worker secrets/variables. Never commit a populated .dev.vars file.
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require
+BETTER_AUTH_SECRET=replace-with-a-long-random-secret
+APP_URL=http://localhost:8787
+AUTH_TRUSTED_ORIGINS=http://localhost:8081,http://localhost:19006,http://localhost:3000,familyapp://

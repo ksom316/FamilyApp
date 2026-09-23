@@ -1,0 +1,15 @@
+import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
+
+import * as schema from './schema';
+
+export function createDatabase(databaseUrl: string) {
+  if (!databaseUrl) {
+    throw new Error('A database URL is required.');
+  }
+
+  const sql = neon(databaseUrl);
+  return drizzle(sql, { schema });
+}
+
+export type Database = ReturnType<typeof createDatabase>;

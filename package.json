@@ -5,6 +5,8 @@
   "scripts": {
     "dev:mobile": "corepack pnpm --filter @familyapp/mobile start",
     "dev:api": "corepack pnpm --filter @familyapp/api dev",
+    "db:generate": "corepack pnpm --filter @familyapp/db generate",
+    "db:migrate": "corepack pnpm --filter @familyapp/db migrate",
     "typecheck": "corepack pnpm -r typecheck",
     "lint": "corepack pnpm -r lint"
   }

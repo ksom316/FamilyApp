@@ -1,3 +1,4 @@
 name = "familyapp-api"
 main = "src/index.ts"
 compatibility_date = "2025-05-03"
+compatibility_flags = ["nodejs_compat"]
