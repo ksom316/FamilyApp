@@ -1,7 +1,7 @@
-import { authClient } from './auth-client';
 import { Platform } from 'react-native';
 
-const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8787';
+import { authClient } from './auth-client';
+import { apiUrl } from './api-url';
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
   const cookie = await authClient.getCookie();

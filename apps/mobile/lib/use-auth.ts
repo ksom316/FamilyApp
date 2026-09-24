@@ -5,6 +5,10 @@ export function useAuth() {
 
   return {
     ...session,
-    status: session.isPending ? 'loading' : session.data ? 'authenticated' : 'unauthenticated'
+    status: session.isPending
+      ? 'loading'
+      : session.data
+        ? 'authenticated'
+        : 'unauthenticated'
   } as const;
 }

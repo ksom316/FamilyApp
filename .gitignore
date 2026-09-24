@@ -1,6 +1,7 @@
 node_modules/
 .pnpm-store/
 .expo/
+.wrangler/
 dist/
 build/
 coverage/

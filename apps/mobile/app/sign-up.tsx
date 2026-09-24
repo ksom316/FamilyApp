@@ -1,8 +1,12 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { colors, radius, spacing, typography } from '@familyapp/config';
+import { spacing } from '@familyapp/config';
 
+import { AppText } from '../components/AppText';
+import { AuthShell } from '../components/AuthShell';
+import { Button } from '../components/Button';
+import { TextField } from '../components/TextField';
 import { authClient } from '../lib/auth-client';
 
 export default function SignUpScreen() {
@@ -27,37 +31,32 @@ export default function SignUpScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.card}>
-          <Text style={styles.title}>Create your account</Text>
-          <Text style={styles.subtitle}>Start building your family home.</Text>
-          <TextInput autoComplete="name" onChangeText={setName} placeholder="Name" placeholderTextColor={colors.light.mutedText} style={styles.input} value={name} />
-          <TextInput autoCapitalize="none" autoComplete="email" keyboardType="email-address" onChangeText={setEmail} placeholder="Email" placeholderTextColor={colors.light.mutedText} style={styles.input} value={email} />
-          <TextInput autoComplete="new-password" onChangeText={setPassword} placeholder="Password (8+ characters)" placeholderTextColor={colors.light.mutedText} secureTextEntry style={styles.input} value={password} />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable disabled={isSubmitting} onPress={submit} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>{isSubmitting ? 'Creating account…' : 'Create account'}</Text>
-          </Pressable>
-          <Pressable onPress={() => router.replace('/sign-in')} style={styles.linkButton}>
-            <Text style={styles.linkText}>Already have an account? Sign in</Text>
+    <AuthShell
+      title="Make room for together"
+      subtitle="Create your private FamilyApp account in a few seconds."
+      footer={(
+        <View style={styles.footer}>
+          <AppText variant="caption" tone="mutedText">Already have an account?</AppText>
+          <Pressable accessibilityRole="button" onPress={() => router.replace('/sign-in')} style={styles.linkButton}>
+            <AppText variant="caption" tone="secondary">Sign in</AppText>
           </Pressable>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      )}
+    >
+      <TextField autoFocus autoComplete="name" label="Your name" onChangeText={setName} placeholder="What should we call you?" value={name} />
+      <TextField autoCapitalize="none" autoComplete="email" keyboardType="email-address" label="Email" onChangeText={setEmail} placeholder="you@example.com" value={email} />
+      <TextField autoComplete="new-password" label="Password" onChangeText={setPassword} placeholder="At least 8 characters" secureTextEntry value={password} />
+      <AppText variant="caption" tone="mutedText" style={styles.hint}>Your account is the beginning of your private family space.</AppText>
+      {error ? <AppText variant="caption" tone="danger" style={styles.error}>{error}</AppText> : null}
+      <Button fullWidth label="Create account" loading={isSubmitting} onPress={submit} style={styles.submit} />
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.light.background },
-  content: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg },
-  card: { alignSelf: 'center', backgroundColor: colors.light.surface, borderColor: colors.light.border, borderRadius: radius.lg, borderWidth: 1, padding: spacing.lg, width: '100%', maxWidth: 440 },
-  title: { color: colors.light.text, fontSize: typography.size.xl, fontWeight: '700' },
-  subtitle: { color: colors.light.mutedText, fontSize: typography.size.md, marginTop: spacing.sm },
-  input: { backgroundColor: colors.light.background, borderColor: colors.light.border, borderRadius: radius.md, borderWidth: 1, color: colors.light.text, fontSize: typography.size.md, marginTop: spacing.md, padding: spacing.md },
-  error: { color: colors.light.danger, fontSize: typography.size.sm, marginTop: spacing.sm },
-  primaryButton: { alignItems: 'center', backgroundColor: colors.light.primary, borderRadius: radius.md, marginTop: spacing.lg, padding: spacing.md },
-  primaryButtonText: { color: colors.light.surface, fontSize: typography.size.md, fontWeight: '700' },
-  linkButton: { alignItems: 'center', marginTop: spacing.lg },
-  linkText: { color: colors.light.secondary, fontSize: typography.size.sm, fontWeight: '600' }
+  error: { marginTop: spacing.md },
+  footer: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center', marginTop: spacing.lg },
+  hint: { marginTop: spacing.md },
+  linkButton: { justifyContent: 'center', marginLeft: spacing.xs, minHeight: 44 },
+  submit: { marginTop: spacing.lg }
 });
