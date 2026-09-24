@@ -190,3 +190,62 @@ export const familyInvitations = pgTable(
     )
   ]
 );
+
+export const familyEvents = pgTable(
+  'family_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    title: text('title').notNull(),
+    description: text('description'),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_events_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    index('family_events_family_starts_at_idx').on(table.familyId, table.startsAt),
+    index('family_events_creator_idx').on(table.createdByMemberId),
+    check('family_events_end_after_start', sql`${table.endsAt} is null or ${table.endsAt} >= ${table.startsAt}`)
+  ]
+);
+
+export const familyTasks = pgTable(
+  'family_tasks',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    assignedMemberId: uuid('assigned_member_id'),
+    title: text('title').notNull(),
+    description: text('description'),
+    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_tasks_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'family_tasks_assignee_family_fk',
+      columns: [table.assignedMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    index('family_tasks_family_due_at_idx').on(table.familyId, table.dueAt),
+    index('family_tasks_family_completed_at_idx').on(table.familyId, table.completedAt),
+    index('family_tasks_creator_idx').on(table.createdByMemberId),
+    index('family_tasks_assignee_idx').on(table.assignedMemberId)
+  ]
+);

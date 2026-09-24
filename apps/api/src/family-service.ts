@@ -1,9 +1,9 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
-import { families, familyInvitations, familyMembers } from '@familyapp/db/schema';
+import { families, familyInvitations, familyMembers, users } from '@familyapp/db/schema';
 
-export type FamilyErrorCode = 'invalid_name' | 'invalid_invitation' | 'expired_invitation' | 'revoked_invitation' | 'used_invitation';
+export type FamilyErrorCode = 'invalid_name' | 'invalid_family_id' | 'invalid_invitation' | 'expired_invitation' | 'revoked_invitation' | 'used_invitation' | 'not_a_member' | 'forbidden_role' | 'invalid_invitation_role';
 
 export class FamilyServiceError extends Error {
   constructor(public readonly code: FamilyErrorCode, message: string, public readonly status = 400) {
@@ -58,6 +58,76 @@ export async function createFamily(db: Database, userId: string, rawName: string
 async function hashInvitationToken(token: string) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function listFamilyMembers(db: Database, userId: string, familyId: string) {
+  await requireFamilyMembership(db, userId, familyId);
+
+  return db
+    .select({
+      id: familyMembers.id,
+      userId: familyMembers.userId,
+      displayName: users.name,
+      avatar: users.image,
+      role: familyMembers.role,
+      joinedAt: familyMembers.joinedAt
+    })
+    .from(familyMembers)
+    .innerJoin(users, eq(familyMembers.userId, users.id))
+    .where(eq(familyMembers.familyId, familyId))
+    .orderBy(asc(familyMembers.joinedAt));
+}
+
+function generateInvitationToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+export function assertFamilyId(familyId: string) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(familyId)) {
+    throw new FamilyServiceError('invalid_family_id', 'The family identifier is not valid.');
+  }
+}
+
+export async function requireFamilyMembership(db: Database, userId: string, familyId: string) {
+  assertFamilyId(familyId);
+  const [membership] = await db
+    .select({ id: familyMembers.id, role: familyMembers.role })
+    .from(familyMembers)
+    .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.userId, userId)))
+    .limit(1);
+
+  if (!membership) throw new FamilyServiceError('not_a_member', 'You are not a member of this family.', 403);
+  return membership;
+}
+
+export async function createFamilyInvitation(
+  db: Database,
+  userId: string,
+  familyId: string,
+  requestedRole: unknown
+) {
+  if (requestedRole !== 'member' && requestedRole !== 'guardian') {
+    throw new FamilyServiceError('invalid_invitation_role', 'Choose member or guardian for the invitation.');
+  }
+
+  const membership = await requireFamilyMembership(db, userId, familyId);
+  if (membership.role !== 'owner' && membership.role !== 'guardian') {
+    throw new FamilyServiceError('forbidden_role', 'Only owners and guardians can invite family members.', 403);
+  }
+
+  const token = generateInvitationToken();
+  const tokenHash = await hashInvitationToken(token);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const [invitation] = await db
+    .insert(familyInvitations)
+    .values({ familyId, inviterMemberId: membership.id, role: requestedRole, tokenHash, expiresAt })
+    .returning({ id: familyInvitations.id, role: familyInvitations.role, expiresAt: familyInvitations.expiresAt });
+
+  if (!invitation) throw new Error('Invitation creation did not return the created record.');
+  return { ...invitation, token };
 }
 
 export async function acceptFamilyInvitation(db: Database, userId: string, rawToken: string) {
