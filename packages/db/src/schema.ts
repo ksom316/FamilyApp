@@ -2,8 +2,10 @@ import { sql } from 'drizzle-orm';
 import {
   check,
   boolean,
+  date,
   foreignKey,
   index,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -273,5 +275,68 @@ export const familyMessages = pgTable(
       'family_messages_text_length',
       sql`char_length(${table.text}) between 1 and 2000 and ${table.text} = btrim(${table.text})`
     )
+  ]
+);
+
+export const memoryMediaType = pgEnum('memory_media_type', ['image']);
+
+export const familyMemories = pgTable(
+  'family_memories',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    title: text('title'),
+    memoryDate: date('memory_date', { mode: 'string' }).notNull(),
+    mediaType: memoryMediaType('media_type').notNull().default('image'),
+    objectKey: text('object_key').notNull(),
+    mimeType: text('mime_type').notNull(),
+    fileSizeBytes: integer('file_size_bytes').notNull(),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_memories_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    unique('family_memories_id_family_unique').on(table.id, table.familyId),
+    unique('family_memories_object_key_unique').on(table.objectKey),
+    index('family_memories_family_memory_date_idx').on(table.familyId, table.memoryDate),
+    index('family_memories_creator_idx').on(table.createdByMemberId),
+    check(
+      'family_memories_title_length',
+      sql`${table.title} is null or char_length(${table.title}) between 1 and 120`
+    ),
+    check('family_memories_file_size_positive', sql`${table.fileSizeBytes} > 0`)
+  ]
+);
+
+export const familyMemoryFavorites = pgTable(
+  'family_memory_favorites',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    memoryId: uuid('memory_id').notNull(),
+    memberId: uuid('member_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_memory_favorites_memory_family_fk',
+      columns: [table.memoryId, table.familyId],
+      foreignColumns: [familyMemories.id, familyMemories.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_memory_favorites_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_memory_favorites_memory_member_unique').on(table.memoryId, table.memberId),
+    index('family_memory_favorites_member_idx').on(table.memberId)
   ]
 );

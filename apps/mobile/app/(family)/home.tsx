@@ -10,6 +10,7 @@ import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyMembers } from '../../lib/families';
+import { getFamilyMemories, type FamilyMemory } from '../../lib/memories';
 import { getFamilyPlans, type FamilyPlans } from '../../lib/plans';
 import { useAuth } from '../../lib/use-auth';
 
@@ -29,11 +30,14 @@ export default function FamilyHomeScreen() {
   const [memberCountFailed, setMemberCountFailed] = useState(false);
   const [plans, setPlans] = useState<FamilyPlans | null>(null);
   const [plansFailed, setPlansFailed] = useState(false);
+  const [memories, setMemories] = useState<FamilyMemory[] | null>(null);
+  const [memoriesFailed, setMemoriesFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
     setMemberCountFailed(false);
     setPlansFailed(false);
+    setMemoriesFailed(false);
     void getFamilyMembers(family.familyId).then((members) => {
       if (active) setMemberCount(members.length);
     }).catch(() => {
@@ -43,6 +47,11 @@ export default function FamilyHomeScreen() {
       if (active) setPlans(nextPlans);
     }).catch(() => {
       if (active) setPlansFailed(true);
+    });
+    void getFamilyMemories(family.familyId).then((nextMemories) => {
+      if (active) setMemories(nextMemories);
+    }).catch(() => {
+      if (active) setMemoriesFailed(true);
     });
     return () => { active = false; };
   }, [family.familyId]);
@@ -110,6 +119,12 @@ export default function FamilyHomeScreen() {
         <PlanActionCard title="Add an event" detail="Plan family moments" mark="◷" color={theme.secondarySoft} textColor={theme.secondary} onPress={() => router.push('/(family)/plans' as never)} />
         <ComingSoonCard title="Share location" detail="Only when you choose" mark="⌖" color={theme.accentSoft} textColor={theme.warning} />
         <PlanActionCard title="Add a task" detail="Keep home in sync" mark="✓" color={theme.successSoft} textColor={theme.success} onPress={() => router.push('/(family)/plans' as never)} />
+        <Card style={styles.actionCard}>
+          <View style={[styles.actionMark, { backgroundColor: theme.primarySoft }]}><AppText variant="heading" tone="primary">✳</AppText></View>
+          <AppText variant="label" style={styles.actionTitle}>Memories</AppText>
+          <AppText variant="caption" tone="mutedText">{memories ? (memories.length ? `${memories.length} moments saved` : 'Start your first memory') : memoriesFailed ? 'Unavailable right now' : 'Loading memories'}</AppText>
+          <Button label="Open Memories" variant="quiet" onPress={() => router.push('/(family)/memories' as never)} style={styles.actionButton} />
+        </Card>
       </View>
 
       <Card style={[styles.brainCard, { backgroundColor: theme.backgroundTint }]}>

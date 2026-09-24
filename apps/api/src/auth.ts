@@ -10,6 +10,7 @@ export type AuthBindings = {
   BETTER_AUTH_SECRET: string;
   APP_URL: string;
   AUTH_TRUSTED_ORIGINS?: string;
+  MEMORIES_BUCKET?: R2Bucket;
 };
 
 export function getTrustedOrigins(env: AuthBindings) {
