@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { createDatabase } from '@familyapp/db';
 
 import { createAuth, getTrustedOrigins } from './auth';
+import { ChatServiceError, createFamilyMessage, listFamilyMessages } from './chat-service';
 import { acceptFamilyInvitation, createFamily, createFamilyInvitation, FamilyServiceError, listFamilyMembers, listFamilyMemberships } from './family-service';
 import { createEvent, createTask, deleteEvent, deleteTask, listPlans, PlanServiceError, setTaskCompletion, updateEvent, updateTask } from './plans-service';
 import { sessionMiddleware, type ApiEnv } from './session-middleware';
@@ -72,6 +73,46 @@ app.get('/families/:familyId/members', sessionMiddleware, async (c) => {
   } catch (error) {
     if (error instanceof FamilyServiceError) {
       return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 409 | 410);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/messages', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+
+  try {
+    const messages = await listFamilyMessages(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId')
+    );
+    return c.json({ messages });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChatServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403);
+    }
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/messages', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+
+  try {
+    const body = await c.req.json<{ text?: unknown }>();
+    const message = await createFamilyMessage(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      body
+    );
+    return c.json({ message }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChatServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403);
     }
     throw error;
   }

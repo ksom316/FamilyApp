@@ -249,3 +249,29 @@ export const familyTasks = pgTable(
     index('family_tasks_assignee_idx').on(table.assignedMemberId)
   ]
 );
+
+export const familyMessages = pgTable(
+  'family_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    senderMemberId: uuid('sender_member_id').notNull(),
+    text: text('text').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_messages_sender_family_fk',
+      columns: [table.senderMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    index('family_messages_family_created_at_idx').on(table.familyId, table.createdAt),
+    index('family_messages_sender_idx').on(table.senderMemberId),
+    check(
+      'family_messages_text_length',
+      sql`char_length(${table.text}) between 1 and 2000 and ${table.text} = btrim(${table.text})`
+    )
+  ]
+);

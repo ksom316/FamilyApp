@@ -22,6 +22,13 @@
       "when": 1790266506897,
       "tag": "0002_pale_next_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790287102061,
+      "tag": "0003_careless_strong_guy",
+      "breakpoints": true
     }
   ]
 }
