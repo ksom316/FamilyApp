@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View, useColorScheme } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, usePathname } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
@@ -9,30 +10,79 @@ import { BrandMark } from './BrandMark';
 import { Button } from './Button';
 import { authClient } from '../lib/auth-client';
 import type { FamilyMembership } from '../lib/families';
+import { getFamilyNotifications } from '../lib/notifications';
 
-const navItems = [
-  { name: 'home', label: 'Home', mark: '⌂' },
-  { name: 'notifications', label: 'Notifications', mark: '🔔' },
-  { name: 'family', label: 'Family', mark: '♡' },
-  { name: 'chat', label: 'Chat', mark: '◌' },
-  { name: 'plans', label: 'Plans', mark: '▤' },
-  { name: 'calendar', label: 'Calendar', mark: '◫' },
-  { name: 'memories', label: 'Memories', mark: '✳' },
-  { name: 'polls', label: 'Polls', mark: '☑' },
-  { name: 'shopping', label: 'Shopping', mark: '▣' },
-  { name: 'menu', label: 'Menu', mark: '▨' },
-  { name: 'capsules', label: 'Time Capsules', mark: '⌛' },
-  { name: 'location', label: 'Location', mark: '◎' },
-  { name: 'check-ins', label: 'Check-ins', mark: '✓' },
-  { name: 'emergency', label: 'Emergency', mark: '⚠' },
-  { name: 'brain', label: 'Family Brain', mark: '✦' }
-] as const;
+const NOTIFICATIONS_POLL_INTERVAL_MS = 30_000;
+
+type NavItem = { name: string; label: string; mark: string };
+
+const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Main',
+    items: [
+      { name: 'home', label: 'Home', mark: '⌂' },
+      { name: 'notifications', label: 'Notifications', mark: '🔔' },
+      { name: 'family', label: 'Family', mark: '♡' },
+      { name: 'chat', label: 'Chat', mark: '◌' }
+    ]
+  },
+  {
+    label: 'Plan',
+    items: [
+      { name: 'plans', label: 'Plans', mark: '▤' },
+      { name: 'calendar', label: 'Calendar', mark: '◫' },
+      { name: 'polls', label: 'Polls', mark: '☑' },
+      { name: 'shopping', label: 'Shopping', mark: '▣' },
+      { name: 'menu', label: 'Menu', mark: '▨' }
+    ]
+  },
+  {
+    label: 'Keep',
+    items: [
+      { name: 'memories', label: 'Memories', mark: '✳' },
+      { name: 'capsules', label: 'Time Capsules', mark: '⌛' }
+    ]
+  },
+  {
+    label: 'Safety',
+    items: [
+      { name: 'location', label: 'Location', mark: '◎' },
+      { name: 'check-ins', label: 'Check-ins', mark: '✓' },
+      { name: 'emergency', label: 'Emergency', mark: '⚠' }
+    ]
+  },
+  {
+    label: '',
+    items: [{ name: 'brain', label: 'Family Brain', mark: '✦' }]
+  }
+];
 
 export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
   const { data: session } = authClient.useSession();
   const scheme = useColorScheme();
   const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
   const pathname = usePathname();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const activeRef = useRef(true);
+
+  const loadUnreadCount = useCallback(async () => {
+    try {
+      const result = await getFamilyNotifications(family.familyId);
+      if (activeRef.current) setUnreadCount(result.unreadCount);
+    } catch {
+      // The sidebar badge degrades gracefully with no count shown.
+    }
+  }, [family.familyId]);
+
+  useEffect(() => {
+    activeRef.current = true;
+    void loadUnreadCount();
+    const interval = setInterval(() => void loadUnreadCount(), NOTIFICATIONS_POLL_INTERVAL_MS);
+    return () => {
+      activeRef.current = false;
+      clearInterval(interval);
+    };
+  }, [loadUnreadCount]);
 
   return (
     <View style={[styles.sidebar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -41,17 +91,27 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
         <AppText variant="caption" tone="primary">YOUR FAMILY</AppText>
         <AppText variant="label" numberOfLines={1} style={styles.familyName}>{family.familyName}</AppText>
       </View>
-      <View style={styles.sideLinks}>
-        {navItems.map((item) => {
-          const active = pathname.split('/').includes(item.name) || (item.name === 'chat' && pathname.split('/').includes('private-chat'));
-          return (
-            <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => router.navigate(`/(family)/${item.name}` as never)} style={[styles.sideLink, active && { backgroundColor: theme.primarySoft }]}>
-              <AppText variant="body" tone={active ? 'primary' : 'mutedText'} style={styles.navMark}>{item.mark}</AppText>
-              <AppText variant="label" tone={active ? 'primary' : 'text'}>{item.label}</AppText>
-            </Pressable>
-          );
-        })}
-      </View>
+      <ScrollView style={styles.sideLinksScroll} contentContainerStyle={styles.sideLinks} showsVerticalScrollIndicator={false}>
+        {navGroups.map((group, index) => (
+          <View key={group.label || `group-${index}`} style={index > 0 && styles.navGroup}>
+            {group.label ? <AppText variant="caption" tone="mutedText" style={styles.groupLabel}>{group.label.toUpperCase()}</AppText> : null}
+            {group.items.map((item) => {
+              const active = pathname.split('/').includes(item.name) || (item.name === 'chat' && pathname.split('/').includes('private-chat'));
+              return (
+                <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => router.navigate(`/(family)/${item.name}` as never)} style={[styles.sideLink, active && { backgroundColor: theme.primarySoft }]}>
+                  <AppText variant="body" tone={active ? 'primary' : 'mutedText'} style={styles.navMark}>{item.mark}</AppText>
+                  <AppText variant="label" tone={active ? 'primary' : 'text'} style={styles.navLabel}>{item.label}</AppText>
+                  {item.name === 'notifications' && unreadCount > 0 ? (
+                    <View style={[styles.navBadge, { backgroundColor: theme.danger }]}>
+                      <AppText variant="caption" style={styles.navBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</AppText>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+      </ScrollView>
       <View style={[styles.profile, { borderColor: theme.border }]}>
         <Avatar name={session?.user.name} imageUrl={session?.user.image} size={40} />
         <View style={styles.profileCopy}><AppText variant="label" numberOfLines={1}>{session?.user.name ?? 'Your account'}</AppText><AppText variant="caption" tone="mutedText" numberOfLines={1}>{session?.user.email ?? 'Family member'}</AppText></View>
@@ -104,13 +164,19 @@ export function MobileFamilyNavigation() {
 }
 
 const styles = StyleSheet.create({
-  sidebar: { borderRightWidth: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xl, width: 264 },
+  sidebar: { borderRightWidth: 1, flex: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xl, width: 264 },
   familyBadge: { borderRadius: radius.md, marginTop: spacing.xl, padding: spacing.md },
   familyName: { marginTop: spacing.xs },
-  sideLinks: { gap: spacing.xs, marginTop: spacing.xl },
+  sideLinksScroll: { flex: 1, minHeight: 0, marginTop: spacing.lg },
+  sideLinks: { gap: spacing.xs, paddingBottom: spacing.md },
+  navGroup: { marginTop: spacing.md },
+  groupLabel: { letterSpacing: 0.6, marginBottom: spacing.xs, marginLeft: spacing.md },
   sideLink: { alignItems: 'center', borderRadius: radius.md, flexDirection: 'row', gap: spacing.md, minHeight: 50, paddingHorizontal: spacing.md },
   navMark: { fontSize: 20, textAlign: 'center', width: 24 },
-  profile: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, marginTop: 'auto', paddingBottom: spacing.lg, paddingTop: spacing.md },
+  navLabel: { flex: 1 },
+  navBadge: { alignItems: 'center', borderRadius: 9, height: 18, justifyContent: 'center', minWidth: 18, paddingHorizontal: 3 },
+  navBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+  profile: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, paddingBottom: spacing.lg, paddingTop: spacing.md },
   profileCopy: { flex: 1, minWidth: 0 },
   mobileHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 64, paddingHorizontal: spacing.md },
   mobileHeaderRight: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
