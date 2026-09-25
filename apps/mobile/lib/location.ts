@@ -5,14 +5,23 @@ export type ShareDurationMinutes = (typeof SHARE_DURATION_MINUTES)[number];
 
 export type LocationPerson = { memberId: string; displayName: string; avatar: string | null; role: 'owner' | 'guardian' | 'member' };
 
+export type LocationAudience =
+  | { type: 'family' }
+  | { type: 'household'; household: { id: string; name: string } }
+  | { type: 'members'; members: FindMePerson[] };
+
 export type FamilyLocationShare = {
+  id: string;
   memberId: string;
+  purpose: 'location' | 'come_find_me';
   latitude: number;
   longitude: number;
   accuracyMeters: number | null;
+  startedAt: string;
   expiresAt: string;
   updatedAt: string;
   member: LocationPerson;
+  audience: LocationAudience;
 };
 
 export type FindMePerson = { memberId: string; displayName: string; avatar: string | null };
@@ -38,6 +47,11 @@ export type IncomingFindMeRequest = {
 export type StartShareInput = { latitude: number; longitude: number; accuracyMeters?: number | null; durationMinutes: ShareDurationMinutes };
 export type PingShareInput = { latitude: number; longitude: number; accuracyMeters?: number | null };
 export type FindMeInput = { recipientMemberId: string; durationMinutes: ShareDurationMinutes; latitude: number; longitude: number; accuracyMeters?: number | null };
+export type ComeFindMeAudienceInput =
+  | { audienceType: 'family' }
+  | { audienceType: 'household'; householdId: string }
+  | { audienceType: 'members'; memberIds: string[] };
+export type StartComeFindMeInput = StartShareInput & ComeFindMeAudienceInput;
 
 export class LocationApiError extends Error {
   constructor(message: string, public readonly code?: string) {
@@ -56,18 +70,34 @@ function jsonRequest(method: string, body: unknown): RequestInit {
   return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 }
 
+/** Keep optional provider accuracy from invalidating an otherwise usable location. */
+export function normalizeLocationAccuracy(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 50_000
+    ? value
+    : null;
+}
+
+function withNormalizedAccuracy<T extends { accuracyMeters?: number | null }>(input: T): T {
+  return { ...input, accuracyMeters: normalizeLocationAccuracy(input.accuracyMeters) };
+}
+
 export async function getFamilyLocationShares(familyId: string) {
   const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/location/shares`);
   return (await readResponse<{ shares: FamilyLocationShare[] }>(response)).shares;
 }
 
+export async function getFamilyLocationShare(familyId: string, shareId: string) {
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/location/shares/${encodeURIComponent(shareId)}`);
+  return (await readResponse<{ share: FamilyLocationShare }>(response)).share;
+}
+
 export async function startMyLocationShare(familyId: string, input: StartShareInput) {
-  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/location/shares/me/start`, jsonRequest('POST', input));
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/location/shares/me/start`, jsonRequest('POST', withNormalizedAccuracy(input)));
   return (await readResponse<{ share: FamilyLocationShare }>(response)).share;
 }
 
 export async function pingMyLocationShare(familyId: string, input: PingShareInput) {
-  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/location/shares/me`, jsonRequest('PATCH', input));
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/location/shares/me`, jsonRequest('PATCH', withNormalizedAccuracy(input)));
   return (await readResponse<{ share: FamilyLocationShare }>(response)).share;
 }
 
@@ -76,8 +106,18 @@ export async function stopMyLocationShare(familyId: string) {
   if (!response.ok) await readResponse(response);
 }
 
+export async function startComeFindMe(familyId: string, input: StartComeFindMeInput) {
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/location/come-find-me/start`, jsonRequest('POST', withNormalizedAccuracy(input)));
+  return (await readResponse<{ share: FamilyLocationShare }>(response)).share;
+}
+
+export async function updateComeFindMeAudience(familyId: string, input: ComeFindMeAudienceInput) {
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/location/come-find-me/me/audience`, jsonRequest('PATCH', input));
+  return (await readResponse<{ share: FamilyLocationShare }>(response)).share;
+}
+
 export async function createFindMeRequest(familyId: string, input: FindMeInput) {
-  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/find-me`, jsonRequest('POST', input));
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/find-me`, jsonRequest('POST', withNormalizedAccuracy(input)));
   return (await readResponse<{ request: OutgoingFindMeRequest }>(response)).request;
 }
 
@@ -123,4 +163,15 @@ export function formatDistanceKm(km: number) {
 
 export function mapsUrl(latitude: number, longitude: number) {
   return `https://maps.google.com/?q=${latitude},${longitude}`;
+}
+
+export function directionsUrl(latitude: number, longitude: number) {
+  return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+}
+
+export function formatLocationAudience(audience: LocationAudience) {
+  if (audience.type === 'family') return 'Entire family';
+  if (audience.type === 'household') return audience.household.name;
+  if (audience.members.length === 1) return audience.members[0]?.displayName ?? 'One person';
+  return `${audience.members.length} people`;
 }

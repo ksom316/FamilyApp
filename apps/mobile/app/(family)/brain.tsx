@@ -18,6 +18,7 @@ import { colors, radius, spacing, type Theme } from '@familyapp/config';
 import { AppText } from '../../components/AppText';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
+import { MarkdownText } from '../../components/MarkdownText';
 import { Screen } from '../../components/Screen';
 import { BrainApiError, MAX_BRAIN_MESSAGE_LENGTH, sendFamilyBrainMessage, type BrainMessage } from '../../lib/brain';
 import { useCurrentFamily } from '../../lib/family-context';
@@ -143,7 +144,9 @@ export default function BrainScreen() {
                       ? { backgroundColor: theme.primary, borderColor: theme.primary }
                       : { backgroundColor: theme.secondarySoft, borderColor: theme.border }]}
                   >
-                    <AppText variant="body" tone={turn.role === 'user' ? 'textOnPrimary' : 'text'}>{turn.content}</AppText>
+                    {turn.role === 'assistant'
+                      ? <MarkdownText content={turn.content} />
+                      : <AppText variant="body" tone="textOnPrimary">{turn.content}</AppText>}
                   </View>
                 </View>
               ))

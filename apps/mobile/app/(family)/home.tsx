@@ -13,10 +13,11 @@ import { getFamilyEmergencies, type EmergencyIncident } from '../../lib/emergenc
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyNotifications } from '../../lib/notifications';
 import { getFamilyMembers } from '../../lib/families';
-import { getFamilyLocationShares, getIncomingFindMeRequests, type FamilyLocationShare, type IncomingFindMeRequest } from '../../lib/location';
+import { getFamilyLocationShares, type FamilyLocationShare } from '../../lib/location';
 import { getFamilyMemories, type FamilyMemory } from '../../lib/memories';
 import { getMenuForTarget, type Menu } from '../../lib/menus';
 import { getFamilyPlans, type FamilyPlans } from '../../lib/plans';
+import { getFamilyTasks, type TaskSummary } from '../../lib/tasks';
 import { getFamilyTimeCapsules, type TimeCapsuleSummary } from '../../lib/time-capsules';
 import { useAuth } from '../../lib/use-auth';
 
@@ -56,7 +57,6 @@ export default function FamilyHomeScreen() {
   const [memories, setMemories] = useState<FamilyMemory[] | null>(null);
   const [memoriesFailed, setMemoriesFailed] = useState(false);
   const [locationShares, setLocationShares] = useState<FamilyLocationShare[] | null>(null);
-  const [incomingFindMe, setIncomingFindMe] = useState<IncomingFindMeRequest[] | null>(null);
   const [locationFailed, setLocationFailed] = useState(false);
   const [timeCapsules, setTimeCapsules] = useState<TimeCapsuleSummary[] | null>(null);
   const [timeCapsulesFailed, setTimeCapsulesFailed] = useState(false);
@@ -68,6 +68,8 @@ export default function FamilyHomeScreen() {
   const [checkInSending, setCheckInSending] = useState<'safe' | 'arrived' | null>(null);
   const [activeEmergencies, setActiveEmergencies] = useState<EmergencyIncident[] | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [myTasks, setMyTasks] = useState<TaskSummary[] | null>(null);
+  const [tasksFailed, setTasksFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -79,6 +81,7 @@ export default function FamilyHomeScreen() {
     setMenuLoaded(false);
     setMenuFailed(false);
     setCheckInsFailed(false);
+    setTasksFailed(false);
     void getFamilyMembers(family.familyId).then((members) => {
       if (active) setMemberCount(members.length);
     }).catch(() => {
@@ -94,8 +97,8 @@ export default function FamilyHomeScreen() {
     }).catch(() => {
       if (active) setMemoriesFailed(true);
     });
-    void Promise.all([getFamilyLocationShares(family.familyId), getIncomingFindMeRequests(family.familyId)]).then(([shares, requests]) => {
-      if (active) { setLocationShares(shares); setIncomingFindMe(requests); }
+    void getFamilyLocationShares(family.familyId).then((shares) => {
+      if (active) setLocationShares(shares);
     }).catch(() => {
       if (active) setLocationFailed(true);
     });
@@ -127,6 +130,11 @@ export default function FamilyHomeScreen() {
     }).catch(() => {
       // The Notifications shortcut degrades gracefully with no count shown.
     });
+    void getFamilyTasks(family.familyId).then((tasks) => {
+      if (active) setMyTasks(tasks);
+    }).catch(() => {
+      if (active) setTasksFailed(true);
+    });
     return () => { active = false; };
   }, [family.familyId, family.id]);
 
@@ -151,10 +159,19 @@ export default function FamilyHomeScreen() {
   const isWideHero = contentWidth >= 720;
   const isCompact = contentWidth < 620;
   const amISharing = locationShares?.some((share) => share.memberId === family.id) ?? false;
-  const incomingFindMeCount = incomingFindMe?.length ?? 0;
+  const visibleFindMeShares = locationShares?.filter((share) => share.memberId !== family.id && share.purpose === 'come_find_me') ?? [];
   const lockedCapsules = timeCapsules?.filter((capsule) => capsule.isLocked) ?? [];
   const nextCapsule = lockedCapsules[0];
   const pendingTasks = plans?.tasks.filter((task) => !task.completedAt) ?? [];
+  const myOutstandingTasks = (myTasks ?? [])
+    .filter((task) => task.isAssignedToMe && !task.myCompletedAt)
+    .sort((a, b) => {
+      if (!a.dueAt && !b.dueAt) return 0;
+      if (!a.dueAt) return 1;
+      if (!b.dueAt) return -1;
+      return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+    });
+  const nextTask = myOutstandingTasks[0];
   const today = todayLocalDateString();
   const todayMeals = todayMenu ? {
     breakfast: todayMenu.meals.find((meal) => meal.mealDate === today && meal.mealType === 'breakfast') ?? null,
@@ -214,11 +231,19 @@ export default function FamilyHomeScreen() {
           <AppText variant="heading" style={styles.overviewTitle}>{plans ? plans.events.length : plansFailed ? '—' : '…'} events</AppText>
           <AppText variant="caption" tone="mutedText">{plans?.events[0] ? `Next: ${plans.events[0].title}` : plansFailed ? 'Unavailable right now' : 'Nothing scheduled yet'}</AppText>
         </Card>
-        <Card style={[styles.overviewCard, { backgroundColor: theme.successSoft }]}>
-          <AppText variant="caption" tone="mutedText">TOGETHER</AppText>
-          <AppText variant="heading" style={styles.overviewTitle}>{plans ? pendingTasks.length : plansFailed ? '—' : '…'} tasks</AppText>
-          <AppText variant="caption" tone="mutedText">{plans ? (pendingTasks.length ? 'Still to do' : 'All caught up') : plansFailed ? 'Unavailable right now' : 'Loading family tasks'}</AppText>
-        </Card>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/(family)/tasks' as never)} style={styles.overviewPressable}>
+          <Card style={[styles.overviewCard, { backgroundColor: theme.successSoft }]}>
+            <AppText variant="caption" tone="mutedText">TOGETHER</AppText>
+            <AppText variant="heading" style={styles.overviewTitle}>
+              {myTasks ? (myOutstandingTasks.length === 0 ? 'All caught up' : `${myOutstandingTasks.length} task${myOutstandingTasks.length === 1 ? '' : 's'}`) : tasksFailed ? '—' : '…'}
+            </AppText>
+            <AppText variant="caption" tone="mutedText" numberOfLines={1}>
+              {myTasks
+                ? (nextTask ? `Next: ${nextTask.title}` : 'All caught up')
+                : tasksFailed ? 'Unavailable right now' : 'Loading family tasks'}
+            </AppText>
+          </Card>
+        </Pressable>
       </View>
 
       <View style={styles.sectionHeader}>
@@ -235,13 +260,15 @@ export default function FamilyHomeScreen() {
         </Card>
         <PlanActionCard title="Add an event" detail="Plan family moments" mark="◷" color={theme.secondarySoft} textColor={theme.secondary} onPress={() => router.push('/(family)/plans' as never)} />
         <Card style={styles.actionCard}>
-          <View style={[styles.actionMark, { backgroundColor: incomingFindMeCount > 0 ? theme.primarySoft : theme.accentSoft }]}>
-            <AppText variant="heading" style={{ color: incomingFindMeCount > 0 ? theme.primary : theme.warning }}>◎</AppText>
+          <View style={[styles.actionMark, { backgroundColor: visibleFindMeShares.length > 0 ? theme.primarySoft : theme.accentSoft }]}>
+            <AppText variant="heading" style={{ color: visibleFindMeShares.length > 0 ? theme.primary : theme.warning }}>◎</AppText>
           </View>
           <AppText variant="label" style={styles.actionTitle}>Location</AppText>
           <AppText variant="caption" tone="mutedText">
-            {incomingFindMeCount > 0
-              ? `${incomingFindMeCount} family member${incomingFindMeCount === 1 ? '' : 's'} want you to come find them`
+            {visibleFindMeShares.length > 0
+              ? visibleFindMeShares.length === 1
+                ? `${visibleFindMeShares[0]?.member.displayName ?? 'A family member'} is sharing their location`
+                : `${visibleFindMeShares.length} family members are sharing`
               : amISharing
                 ? 'You’re sharing your location'
                 : locationFailed
@@ -357,6 +384,7 @@ const styles = StyleSheet.create({
   emergencyBanner: { alignItems: 'center', borderWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.lg, padding: spacing.lg },
   emergencyBannerCopy: { flex: 1, minWidth: 0 },
   overview: { gap: spacing.md, marginTop: spacing.lg },
+  overviewPressable: { flex: 1 },
   overviewWide: { flexDirection: 'row' },
   overviewCard: { flex: 1, minHeight: 128, justifyContent: 'center' },
   metricRow: { alignItems: 'baseline', flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },

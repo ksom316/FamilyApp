@@ -619,6 +619,9 @@ export const familyLocationShares = pgTable(
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
     memberId: uuid('member_id').notNull(),
+    purpose: text('purpose').notNull().default('location'),
+    audienceType: text('audience_type').notNull().default('family'),
+    householdId: uuid('household_id'),
     // Nullable: coordinates are cleared (not merely hidden) the moment a share is
     // stopped, expires, or is lazily swept up as stale — see the location service for
     // where each of those clears happens. A null lat/lng always means "no current
@@ -626,6 +629,7 @@ export const familyLocationShares = pgTable(
     latitude: doublePrecision('latitude'),
     longitude: doublePrecision('longitude'),
     accuracyMeters: doublePrecision('accuracy_meters'),
+    startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     stoppedAt: timestamp('stopped_at', { withTimezone: true }),
     ...timestamps
@@ -636,7 +640,13 @@ export const familyLocationShares = pgTable(
       columns: [table.memberId, table.familyId],
       foreignColumns: [familyMembers.id, familyMembers.familyId]
     }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_location_shares_household_family_fk',
+      columns: [table.householdId, table.familyId],
+      foreignColumns: [households.id, households.familyId]
+    }).onDelete('cascade'),
     unique('family_location_shares_member_unique').on(table.memberId),
+    unique('family_location_shares_id_family_unique').on(table.id, table.familyId),
     index('family_location_shares_family_active_idx').on(table.familyId, table.stoppedAt, table.expiresAt),
     index('family_location_shares_expires_at_idx').on(table.expiresAt),
     check(
@@ -654,7 +664,38 @@ export const familyLocationShares = pgTable(
     check(
       'family_location_shares_accuracy_range',
       sql`${table.accuracyMeters} is null or ${table.accuracyMeters} between 0 and 50000`
+    ),
+    check('family_location_shares_purpose_allowed', sql`${table.purpose} in ('location', 'come_find_me')`),
+    check('family_location_shares_audience_type_allowed', sql`${table.audienceType} in ('family', 'household', 'members')`),
+    check(
+      'family_location_shares_household_consistency',
+      sql`(${table.audienceType} = 'household') = (${table.householdId} is not null)`
     )
+  ]
+);
+
+export const familyLocationShareMembers = pgTable(
+  'family_location_share_members',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    shareId: uuid('share_id').notNull(),
+    memberId: uuid('member_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_location_share_members_share_family_fk',
+      columns: [table.shareId, table.familyId],
+      foreignColumns: [familyLocationShares.id, familyLocationShares.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_location_share_members_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_location_share_members_share_member_unique').on(table.shareId, table.memberId),
+    index('family_location_share_members_member_idx').on(table.memberId)
   ]
 );
 
@@ -1248,5 +1289,82 @@ export const familyNotifications = pgTable(
       sql`${table.message} is null or char_length(${table.message}) between 1 and 300`
     ),
     check('family_notifications_route_length', sql`${table.route} is null or char_length(${table.route}) between 1 and 200`)
+  ]
+);
+
+// F21 collaborative tasks/chores — distinct from the simple single-assignee `family_tasks`
+// used by Plans. A chore's audience (family/household/members) only decides who gets
+// assigned at creation time; `family_chore_assignments` is the actual per-member
+// completion record and the only source of truth for both visibility and progress.
+export const familyChores = pgTable(
+  'family_chores',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    audienceType: text('audience_type').notNull().default('family'),
+    householdId: uuid('household_id'),
+    title: text('title').notNull(),
+    description: text('description'),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_chores_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'family_chores_household_family_fk',
+      columns: [table.householdId, table.familyId],
+      foreignColumns: [households.id, households.familyId]
+    }).onDelete('cascade'),
+    unique('family_chores_id_family_unique').on(table.id, table.familyId),
+    index('family_chores_family_due_at_idx').on(table.familyId, table.dueAt),
+    index('family_chores_creator_idx').on(table.createdByMemberId),
+    index('family_chores_household_idx').on(table.householdId),
+    check(
+      'family_chores_title_length',
+      sql`char_length(${table.title}) between 1 and 140 and ${table.title} = btrim(${table.title})`
+    ),
+    check(
+      'family_chores_description_length',
+      sql`${table.description} is null or (char_length(${table.description}) between 1 and 2000 and ${table.description} = btrim(${table.description}))`
+    ),
+    check('family_chores_audience_type_allowed', sql`${table.audienceType} in ('family', 'household', 'members')`),
+    check(
+      'family_chores_household_consistency',
+      sql`(${table.audienceType} = 'household') = (${table.householdId} is not null)`
+    )
+  ]
+);
+
+export const familyChoreAssignments = pgTable(
+  'family_chore_assignments',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    choreId: uuid('chore_id').notNull(),
+    memberId: uuid('member_id').notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_chore_assignments_chore_family_fk',
+      columns: [table.choreId, table.familyId],
+      foreignColumns: [familyChores.id, familyChores.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_chore_assignments_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_chore_assignments_chore_member_unique').on(table.choreId, table.memberId),
+    index('family_chore_assignments_member_completed_idx').on(table.memberId, table.completedAt),
+    index('family_chore_assignments_chore_idx').on(table.choreId)
   ]
 );

@@ -23,6 +23,15 @@ import {
   resolveEmergency
 } from './emergency-service';
 import { ChatServiceError, createFamilyMessage, listFamilyMessages } from './chat-service';
+import {
+  ChoreServiceError,
+  createChore,
+  deleteChore,
+  getChore,
+  listChores,
+  setChoreCompletion,
+  updateChore
+} from './chores-service';
 import { acceptFamilyInvitation, createFamily, createFamilyInvitation, FamilyServiceError, listFamilyMembers, listFamilyMemberships } from './family-service';
 import {
   addHouseholdMember,
@@ -37,13 +46,16 @@ import {
 import {
   cancelOutgoingFindMeRequest,
   createFindMeRequest,
+  getActiveShare,
   getOutgoingFindMeRequest,
   listActiveShares,
   listIncomingFindMeRequests,
   LocationServiceError,
   respondToFindMeRequest,
+  startComeFindMe,
   startShare,
   stopShare,
+  updateComeFindMeAudience,
   updateShare
 } from './location-service';
 import {
@@ -1354,6 +1366,20 @@ app.get('/families/:familyId/location/shares', sessionMiddleware, async (c) => {
   }
 });
 
+app.get('/families/:familyId/location/shares/:shareId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const share = await getActiveShare(
+      createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('shareId')
+    );
+    return c.json({ share });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
 app.post('/families/:familyId/location/shares/me/start', sessionMiddleware, async (c) => {
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
@@ -1384,6 +1410,30 @@ app.post('/families/:familyId/location/shares/me/stop', sessionMiddleware, async
   try {
     await stopShare(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
     return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/location/come-find-me/start', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const share = await startComeFindMe(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ share }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/location/come-find-me/me/audience', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const share = await updateComeFindMeAudience(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ share });
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
     throw error;
@@ -1568,6 +1618,88 @@ app.post('/families/:familyId/notifications/read-all', sessionMiddleware, async 
     return c.body(null, 204);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof NotificationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+// NOTE: this is intentionally "/chores", not "/tasks" — Plans already registers
+// "/families/:familyId/tasks" (and its :taskId/completion sub-route) above for its own,
+// unrelated single-assignee family_tasks feature. Reusing that path here silently shadowed
+// every one of these handlers behind Plans' identical-looking routes (Hono matches the
+// first-registered handler for an exact method+path), so every mutation from the F21 Tasks
+// screen was actually hitting Plans' createTask/updateTask/deleteTask/setTaskCompletion —
+// which is also why Plans' required due date ("Due date and time is required.") was
+// surfacing on a form whose label says "optional". Only GETs were previously unaffected,
+// since Plans never registered a matching GET path.
+app.get('/families/:familyId/chores', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const tasks = await listChores(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json({ tasks });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChoreServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/chores/:taskId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const task = await getChore(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('taskId'));
+    return c.json({ task });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChoreServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/chores', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const task = await createChore(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ task }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChoreServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/chores/:taskId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const task = await updateChore(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('taskId'), await c.req.json());
+    return c.json({ task });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChoreServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/chores/:taskId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await deleteChore(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('taskId'));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChoreServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/chores/:taskId/completion', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ completed?: unknown }>();
+    const task = await setChoreCompletion(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('taskId'), body.completed);
+    return c.json({ task });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChoreServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
     throw error;
   }
 });

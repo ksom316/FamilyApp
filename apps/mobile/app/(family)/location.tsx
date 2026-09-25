@@ -8,66 +8,56 @@ import { AppText } from '../../components/AppText';
 import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
+import { FamilyMap } from '../../components/FamilyMap';
 import { Screen } from '../../components/Screen';
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyMembers, type FamilyMember } from '../../lib/families';
+import { getFamilyHousehold, getFamilyHouseholds, type Household } from '../../lib/households';
 import {
-  cancelMyFindMeRequest,
-  createFindMeRequest,
-  formatDistanceKm,
+  directionsUrl,
+  formatLocationAudience,
   getFamilyLocationShares,
-  getIncomingFindMeRequests,
-  getOutgoingFindMeRequest,
-  haversineDistanceKm,
   LocationApiError,
   mapsUrl,
   pingMyLocationShare,
-  respondToFindMeRequest,
   SHARE_DURATION_MINUTES,
+  startComeFindMe,
   startMyLocationShare,
   stopMyLocationShare,
+  updateComeFindMeAudience,
+  type ComeFindMeAudienceInput,
   type FamilyLocationShare,
-  type IncomingFindMeRequest,
-  type OutgoingFindMeRequest,
   type ShareDurationMinutes
 } from '../../lib/location';
 
 const POLL_INTERVAL_MS = 20_000;
+const STALE_AFTER_MS = 5 * 60_000;
 const DURATION_LABELS: Record<ShareDurationMinutes, string> = { 15: '15 minutes', 60: '1 hour', 240: '4 hours' };
+type AudienceType = 'family' | 'household' | 'members';
 
 function mergeShare(current: FamilyLocationShare[] | null, share: FamilyLocationShare) {
-  const others = (current ?? []).filter((item) => item.memberId !== share.memberId);
-  return [share, ...others];
-}
-
-function removeShare(current: FamilyLocationShare[] | null, memberId: string) {
-  return (current ?? []).filter((item) => item.memberId !== memberId);
+  return [share, ...(current ?? []).filter((item) => item.memberId !== share.memberId)];
 }
 
 function formatRemaining(expiresAt: string) {
-  const ms = new Date(expiresAt).getTime() - Date.now();
-  if (ms <= 0) return 'Ending…';
-  const totalMinutes = Math.ceil(ms / 60_000);
+  const totalMinutes = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 60_000));
+  if (totalMinutes === 0) return 'Ending…';
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (hours > 0) return `${hours}h ${minutes}m left`;
-  return `${minutes}m left`;
+  return hours ? `${hours}h ${minutes}m left` : `${minutes}m left`;
 }
 
-function formatUpdatedAgo(value: string) {
-  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60_000));
-  if (minutes < 1) return 'Updated just now';
-  if (minutes === 1) return 'Updated 1 minute ago';
-  if (minutes < 60) return `Updated ${minutes} minutes ago`;
-  const hours = Math.round(minutes / 60);
-  return `Updated ${hours} hour${hours === 1 ? '' : 's'} ago`;
+function freshness(updatedAt: string) {
+  const elapsed = Math.max(0, Date.now() - new Date(updatedAt).getTime());
+  const minutes = Math.floor(elapsed / 60_000);
+  const age = minutes < 1 ? 'Updated just now' : minutes === 1 ? 'Updated 1 min ago' : minutes < 60 ? `Updated ${minutes} min ago` : `Updated ${Math.floor(minutes / 60)}h ago`;
+  return { stale: elapsed > STALE_AFTER_MS, label: elapsed > STALE_AFTER_MS ? `Location stale · ${age}` : age };
 }
 
-function formatAskedAgo(value: string) {
-  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60_000));
-  if (minutes < 1) return 'just now';
-  if (minutes === 1) return '1 minute ago';
-  return `${minutes} minutes ago`;
+function audienceInput(audienceType: AudienceType, householdId: string | null, memberIds: string[]): ComeFindMeAudienceInput | null {
+  if (audienceType === 'family') return { audienceType };
+  if (audienceType === 'household') return householdId ? { audienceType, householdId } : null;
+  return memberIds.length ? { audienceType, memberIds } : null;
 }
 
 export default function LocationScreen() {
@@ -75,54 +65,52 @@ export default function LocationScreen() {
   const { width } = useWindowDimensions();
   const scheme = useColorScheme();
   const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
-
   const [shares, setShares] = useState<FamilyLocationShare[] | null>(null);
-  const [incoming, setIncoming] = useState<IncomingFindMeRequest[] | null>(null);
-  const [outgoing, setOutgoing] = useState<OutgoingFindMeRequest | null | undefined>(undefined);
   const [members, setMembers] = useState<FamilyMember[]>([]);
+  const [households, setHouseholds] = useState<Household[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const [findMeError, setFindMeError] = useState<string | null>(null);
   const [duration, setDuration] = useState<ShareDurationMinutes>(60);
-  const [starting, setStarting] = useState(false);
+  const [findMeDuration, setFindMeDuration] = useState<ShareDurationMinutes>(60);
+  const [audienceType, setAudienceType] = useState<AudienceType>('family');
+  const [householdId, setHouseholdId] = useState<string | null>(null);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [starting, setStarting] = useState<'location' | 'come_find_me' | null>(null);
   const [stopping, setStopping] = useState(false);
-  const [askingWho, setAskingWho] = useState(false);
-  const [recipientId, setRecipientId] = useState<string | null>(null);
-  const [askDuration, setAskDuration] = useState<ShareDurationMinutes>(60);
-  const [sendingRequest, setSendingRequest] = useState(false);
-  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [editingAudience, setEditingAudience] = useState(false);
+  const [savingAudience, setSavingAudience] = useState(false);
+  const [selectedShareId, setSelectedShareId] = useState<string | null>(null);
+  const [mapActionError, setMapActionError] = useState<string | null>(null);
   const [, setTick] = useState(0);
-
   const focusedRef = useRef(false);
   const refreshInFlightRef = useRef(false);
   const watchRef = useRef<Location.LocationSubscription | null>(null);
 
-  const myShare = shares?.find((item) => item.memberId === family.id) ?? null;
+  const myShare = shares?.find((share) => share.memberId === family.id) ?? null;
   const myShareActive = Boolean(myShare && new Date(myShare.expiresAt).getTime() > Date.now());
+  const otherShares = (shares ?? []).filter((share) => share.memberId !== family.id);
+  const selectedShare = (shares ?? []).find((share) => share.id === selectedShareId) ?? null;
+  const otherMembers = members.filter((member) => member.id !== family.id);
+  const isWide = width >= 760;
 
-  // Re-render periodically so "N minutes left" / "Updated N minutes ago" stay accurate,
-  // and so an expired share flips this screen out of the sharing-active state on its own.
   useEffect(() => {
     const interval = setInterval(() => setTick((value) => value + 1), 30_000);
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (selectedShareId && shares && !shares.some((share) => share.id === selectedShareId)) setSelectedShareId(null);
+  }, [selectedShareId, shares]);
+
   const load = useCallback(async () => {
     if (!focusedRef.current || refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
     try {
-      const [nextShares, nextIncoming, nextOutgoing] = await Promise.all([
-        getFamilyLocationShares(family.familyId),
-        getIncomingFindMeRequests(family.familyId),
-        getOutgoingFindMeRequest(family.familyId)
-      ]);
-      if (!focusedRef.current) return;
-      setShares(nextShares);
-      setIncoming(nextIncoming);
-      setOutgoing(nextOutgoing);
+      setShares(await getFamilyLocationShares(family.familyId));
       setLoadError(null);
-    } catch (err) {
-      if (focusedRef.current) setLoadError(err instanceof LocationApiError ? err.message : 'We could not load location sharing.');
+    } catch (error) {
+      if (focusedRef.current) setLoadError(error instanceof LocationApiError ? error.message : 'We could not load location sharing.');
     } finally {
       refreshInFlightRef.current = false;
     }
@@ -130,16 +118,20 @@ export default function LocationScreen() {
 
   useEffect(() => {
     void getFamilyMembers(family.familyId).then(setMembers).catch(() => {});
-  }, [family.familyId]);
+    void (async () => {
+      try {
+        const all = await getFamilyHouseholds(family.familyId);
+        const details = await Promise.all(all.map((household) => getFamilyHousehold(family.familyId, household.id).catch(() => null)));
+        setHouseholds(details.filter((detail): detail is NonNullable<typeof detail> => Boolean(detail?.members.some((member) => member.memberId === family.id))).map((detail) => ({ ...detail.household, memberCount: detail.members.length })));
+      } catch { setHouseholds([]); }
+    })();
+  }, [family.familyId, family.id]);
 
   useFocusEffect(useCallback(() => {
     focusedRef.current = true;
     void load();
     const interval = setInterval(() => void load(), POLL_INTERVAL_MS);
-    return () => {
-      focusedRef.current = false;
-      clearInterval(interval);
-    };
+    return () => { focusedRef.current = false; clearInterval(interval); };
   }, [load]));
 
   function stopWatching() {
@@ -155,68 +147,72 @@ export default function LocationScreen() {
         accuracyMeters: position.coords.accuracy ?? undefined
       });
       setShares((current) => mergeShare(current, share));
-    } catch (err) {
-      if (err instanceof LocationApiError && err.code === 'share_not_active') {
+    } catch (error) {
+      if (error instanceof LocationApiError && error.code === 'share_not_active') {
         stopWatching();
-        setShares((current) => removeShare(current, family.id));
+        setShares((current) => (current ?? []).filter((share) => share.memberId !== family.id));
         setShareError('Your sharing session ended.');
       }
     }
   }, [family.familyId, family.id]);
 
-  // Foreground-only watcher: starts whenever my share is active AND this screen is
-  // focused, and is torn down the instant either stops being true — including natural
-  // expiry, since myShareActive is recomputed on every tick.
   useFocusEffect(useCallback(() => {
     let cancelled = false;
     if (myShareActive) {
       void Location.watchPositionAsync(
         { accuracy: Location.Accuracy.Balanced, timeInterval: 30_000, distanceInterval: 30 },
         (position) => { void sendPing(position); }
-      ).then((subscription) => {
-        if (cancelled) subscription.remove();
-        else watchRef.current = subscription;
+      ).then((subscription) => { if (cancelled) subscription.remove(); else watchRef.current = subscription; }).catch(() => {
+        setShareError('Location updates are unavailable. Your last location may become stale.');
       });
     }
-    return () => {
-      cancelled = true;
-      stopWatching();
-    };
+    return () => { cancelled = true; stopWatching(); };
   }, [myShareActive, sendPing]));
 
-  // When the app comes back to the foreground while sharing is active, grab one fresh
-  // fix right away instead of waiting for the next watcher callback.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && myShareActive) {
-        void Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).then(sendPing).catch(() => {});
-      }
+      if (state === 'active' && myShareActive) void Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).then(sendPing).catch(() => {});
     });
     return () => subscription.remove();
   }, [myShareActive, sendPing]);
 
-  async function startSharing() {
+  async function getPosition() {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (!permission.granted) throw new Error('permission_denied');
+    return Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+  }
+
+  async function startLocationSharing() {
+    setStarting('location');
     setShareError(null);
-    setStarting(true);
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        setShareError('Location permission was denied. You can try again anytime — nothing is shared unless you allow it.');
-        return;
-      }
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const position = await getPosition();
       const share = await startMyLocationShare(family.familyId, {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracyMeters: position.coords.accuracy ?? undefined,
-        durationMinutes: duration
+        latitude: position.coords.latitude, longitude: position.coords.longitude,
+        accuracyMeters: position.coords.accuracy ?? undefined, durationMinutes: duration
       });
       setShares((current) => mergeShare(current, share));
-    } catch (err) {
-      setShareError(err instanceof LocationApiError ? err.message : 'We could not get your current location. Check your device’s location settings and try again.');
-    } finally {
-      setStarting(false);
-    }
+    } catch (error) {
+      setShareError(error instanceof LocationApiError ? error.message : error instanceof Error && error.message === 'permission_denied' ? 'Location permission was denied. Nothing was shared.' : 'We could not get your location. Check your device settings and try again.');
+    } finally { setStarting(null); }
+  }
+
+  async function startFindMe() {
+    const audience = audienceInput(audienceType, householdId, memberIds);
+    if (!audience) { setFindMeError(audienceType === 'members' ? 'Choose at least one person.' : 'Choose a family group.'); return; }
+    setStarting('come_find_me');
+    setFindMeError(null);
+    try {
+      const position = await getPosition();
+      const share = await startComeFindMe(family.familyId, {
+        ...audience,
+        latitude: position.coords.latitude, longitude: position.coords.longitude,
+        accuracyMeters: position.coords.accuracy ?? undefined, durationMinutes: findMeDuration
+      });
+      setShares((current) => mergeShare(current, share));
+    } catch (error) {
+      setFindMeError(error instanceof LocationApiError ? error.message : error instanceof Error && error.message === 'permission_denied' ? 'Location permission was denied. Come Find Me was not started.' : 'We could not get your location. Check your device settings and try again.');
+    } finally { setStarting(null); }
   }
 
   async function stopSharing() {
@@ -224,272 +220,204 @@ export default function LocationScreen() {
     stopWatching();
     try {
       await stopMyLocationShare(family.familyId);
-    } catch {
-      // fall through — we still clear local state below so the UI never looks stuck "on"
-    } finally {
-      setShares((current) => removeShare(current, family.id));
-      setStopping(false);
-    }
-  }
-
-  async function sendFindMeRequest() {
-    if (!recipientId) { setFindMeError('Choose who should come find you.'); return; }
-    setFindMeError(null);
-    setSendingRequest(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        setFindMeError('Location permission was denied. You can try again anytime.');
-        return;
-      }
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const request = await createFindMeRequest(family.familyId, {
-        recipientMemberId: recipientId,
-        durationMinutes: askDuration,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracyMeters: position.coords.accuracy ?? undefined
-      });
-      setOutgoing(request);
-      setAskingWho(false);
-      setRecipientId(null);
+      setShares((current) => (current ?? []).filter((share) => share.memberId !== family.id));
+    } catch (error) {
+      setShareError(error instanceof LocationApiError ? error.message : 'We could not stop sharing. Try again.');
       await load();
-    } catch (err) {
-      setFindMeError(err instanceof LocationApiError ? err.message : 'That request could not be sent.');
-    } finally {
-      setSendingRequest(false);
-    }
+    } finally { setStopping(false); }
   }
 
-  async function cancelRequest() {
-    try {
-      await cancelMyFindMeRequest(family.familyId);
-    } finally {
-      setOutgoing(null);
-    }
+  function beginAudienceEdit() {
+    if (!myShare) return;
+    setAudienceType(myShare.audience.type);
+    setHouseholdId(myShare.audience.type === 'household' ? myShare.audience.household.id : null);
+    setMemberIds(myShare.audience.type === 'members' ? myShare.audience.members.map((member) => member.memberId) : []);
+    setEditingAudience(true);
   }
 
-  async function respond(request: IncomingFindMeRequest, response: 'coming' | 'dismissed') {
-    setRespondingId(request.id);
+  async function saveAudience() {
+    const audience = audienceInput(audienceType, householdId, memberIds);
+    if (!audience) { setFindMeError(audienceType === 'members' ? 'Choose at least one person.' : 'Choose a family group.'); return; }
+    setSavingAudience(true);
+    setFindMeError(null);
     try {
-      await respondToFindMeRequest(family.familyId, request.id, response);
-      setIncoming((current) => {
-        if (!current) return current;
-        if (response === 'dismissed') return current.filter((item) => item.id !== request.id);
-        return current.map((item) => (item.id === request.id ? { ...item, response, respondedAt: new Date().toISOString() } : item));
-      });
+      const share = await updateComeFindMeAudience(family.familyId, audience);
+      setShares((current) => mergeShare(current, share));
+      setEditingAudience(false);
+    } catch (error) {
+      setFindMeError(error instanceof LocationApiError ? error.message : 'The audience could not be updated.');
+    } finally { setSavingAudience(false); }
+  }
+
+  async function openMapUrl(url: string) {
+    setMapActionError(null);
+    try {
+      await Linking.openURL(url);
     } catch {
-      // leave the request as-is; the next poll will reconcile
-    } finally {
-      setRespondingId(null);
+      setMapActionError('The external map could not be opened on this device.');
     }
   }
-
-  const shellWidth = width >= 900 ? width - 264 : width;
-  const horizontalPadding = width >= 900 ? spacing.xxl * 2 : spacing.lg * 2;
-  const contentWidth = Math.max(240, Math.min(1080, shellWidth - horizontalPadding));
-  const isWide = contentWidth >= 720;
-
-  const otherShares = (shares ?? []).filter((item) => item.memberId !== family.id);
-  const recipients = members.filter((member) => member.id !== family.id);
 
   return (
     <Screen scroll maxWidth={1080} contentStyle={styles.content}>
-      <View style={styles.headingCopy}>
-        <AppText variant="eyebrow" tone="secondary">Only when you choose</AppText>
-        <AppText variant="display" style={styles.title}>Location</AppText>
-        <AppText variant="body" tone="mutedText" style={styles.subtitle}>
-          Share where you are with your family for a little while, or ask someone to come find you.
-        </AppText>
-      </View>
+      <AppText variant="eyebrow" tone="secondary">Only when you choose</AppText>
+      <AppText variant="display" style={styles.title}>Location</AppText>
+      <AppText variant="body" tone="mutedText" style={styles.subtitle}>You control when your location is shared, who can see it, and when it stops.</AppText>
 
-      {loadError ? (
-        <Card style={[styles.messageCard, { backgroundColor: theme.dangerSoft }]}>
-          <AppText variant="body" tone="danger">{loadError}</AppText>
-          <Button label="Try again" variant="quiet" onPress={() => void load()} />
-        </Card>
-      ) : null}
+      {loadError ? <Card style={[styles.messageCard, { backgroundColor: theme.dangerSoft }]}><AppText variant="body" tone="danger">{loadError}</AppText><Button label="Try again" variant="quiet" onPress={() => void load()} /></Card> : null}
 
-      {/* My sharing status */}
-      {myShareActive && myShare ? (
-        <Card elevated style={[styles.shareCard, { backgroundColor: theme.successSoft, borderColor: theme.success }]}>
-          <View style={styles.shareActiveHeader}>
-            <View style={[styles.liveDot, { backgroundColor: theme.success }]} />
-            <AppText variant="heading" tone="success">You’re sharing your location</AppText>
-          </View>
-          <AppText variant="body" tone="mutedText" style={styles.shareMeta}>{formatRemaining(myShare.expiresAt)} · {formatUpdatedAgo(myShare.updatedAt)}</AppText>
-          {myShare.accuracyMeters ? <AppText variant="caption" tone="mutedText">Accuracy ± {Math.round(myShare.accuracyMeters)} m</AppText> : null}
-          {shareError ? <AppText variant="caption" tone="danger" style={styles.formError}>{shareError}</AppText> : null}
-          <Button label="Stop sharing" variant="secondary" loading={stopping} onPress={() => void stopSharing()} style={styles.stopButton} />
+      <SectionHeading title="My location sharing" detail="Family-wide sharing that you start and stop" />
+      {myShareActive && myShare?.purpose === 'location' ? (
+        <Card elevated style={[styles.sectionCard, { backgroundColor: theme.successSoft, borderColor: theme.success }]}>
+          <AppText variant="heading" tone="success">Actively sharing</AppText>
+          <AppText variant="body" tone="mutedText" style={styles.meta}>{formatRemaining(myShare.expiresAt)} · {freshness(myShare.updatedAt).label}</AppText>
+          <Button label="Stop sharing" variant="secondary" loading={stopping} onPress={() => void stopSharing()} style={styles.action} />
         </Card>
+      ) : myShareActive && myShare?.purpose === 'come_find_me' ? (
+        <Card style={styles.sectionCard}><AppText variant="body">Come Find Me is active with a selected audience.</AppText><AppText variant="caption" tone="mutedText" style={styles.meta}>Manage or stop it below.</AppText></Card>
       ) : (
-        <Card style={styles.shareCard}>
-          <AppText variant="heading">Share my location</AppText>
-          <AppText variant="body" tone="mutedText" style={styles.shareMeta}>
-            Your family will see your approximate location only while sharing is active. It turns off automatically, and you can stop anytime.
-          </AppText>
-          <View style={styles.durationRow}>
-            {SHARE_DURATION_MINUTES.map((minutes) => (
-              <Segment key={minutes} label={DURATION_LABELS[minutes]} active={duration === minutes} onPress={() => setDuration(minutes)} />
-            ))}
-          </View>
-          {shareError ? <AppText variant="caption" tone="danger" style={styles.formError}>{shareError}</AppText> : null}
-          <Button label="Share my location" loading={starting} onPress={() => void startSharing()} style={styles.stopButton} />
+        <Card style={styles.sectionCard}>
+          <AppText variant="body" tone="mutedText">Share your current location with your entire family for a limited time.</AppText>
+          <DurationPicker value={duration} onChange={setDuration} />
+          {shareError ? <AppText variant="caption" tone="danger" style={styles.error}>{shareError}</AppText> : null}
+          <Button label="Share my location" loading={starting === 'location'} onPress={() => void startLocationSharing()} style={styles.action} />
         </Card>
       )}
 
-      {/* Come Find Me */}
-      <View style={styles.sectionHeading}>
-        <AppText variant="heading">Come Find Me</AppText>
-        <AppText variant="caption" tone="mutedText">Ask one family member to come find you</AppText>
-      </View>
-
-      {outgoing ? (
-        <Card style={[styles.findMeCard, { backgroundColor: theme.primarySoft }]}>
-          <AppText variant="label">You asked {outgoing.recipient.displayName} to come find you</AppText>
-          <AppText variant="caption" tone="mutedText" style={styles.shareMeta}>{formatRemaining(outgoing.expiresAt)}{outgoing.response === 'coming' ? ' · They’re on their way' : ''}</AppText>
-          <Button label="Cancel request" variant="quiet" onPress={() => void cancelRequest()} style={styles.stopButton} />
-        </Card>
-      ) : askingWho ? (
-        <Card elevated style={styles.findMeCard}>
-          <AppText variant="label">Who should come find you?</AppText>
-          <View style={styles.memberChoices}>
-            {recipients.map((member) => (
-              <Segment key={member.id} label={member.displayName} active={recipientId === member.id} onPress={() => setRecipientId(member.id)} />
-            ))}
-          </View>
-          <AppText variant="label" style={styles.durationLabel}>For how long</AppText>
-          <View style={styles.durationRow}>
-            {SHARE_DURATION_MINUTES.map((minutes) => (
-              <Segment key={minutes} label={DURATION_LABELS[minutes]} active={askDuration === minutes} onPress={() => setAskDuration(minutes)} />
-            ))}
-          </View>
-          {findMeError ? <AppText variant="caption" tone="danger" style={styles.formError}>{findMeError}</AppText> : null}
-          <View style={styles.formActions}>
-            <Button label="Cancel" variant="quiet" onPress={() => { setAskingWho(false); setFindMeError(null); }} disabled={sendingRequest} />
-            <Button label="Send request" loading={sendingRequest} onPress={() => void sendFindMeRequest()} />
+      <SectionHeading title="Come Find Me" detail="Share with only the people you choose" />
+      {myShareActive && myShare?.purpose === 'come_find_me' ? (
+        <Card elevated style={[styles.sectionCard, { backgroundColor: theme.primarySoft, borderColor: theme.primary }]}>
+          <AppText variant="heading" tone="primary">Come Find Me is active</AppText>
+          <AppText variant="body" tone="mutedText" style={styles.meta}>{formatLocationAudience(myShare.audience)} · {formatRemaining(myShare.expiresAt)}</AppText>
+          <AppText variant="caption" tone={freshness(myShare.updatedAt).stale ? 'danger' : 'mutedText'} style={styles.meta}>{freshness(myShare.updatedAt).label}</AppText>
+          {editingAudience ? <AudiencePicker audienceType={audienceType} setAudienceType={setAudienceType} householdId={householdId} setHouseholdId={setHouseholdId} memberIds={memberIds} setMemberIds={setMemberIds} households={households} members={otherMembers} /> : null}
+          {findMeError ? <AppText variant="caption" tone="danger" style={styles.error}>{findMeError}</AppText> : null}
+          <View style={styles.actions}>
+            {editingAudience ? <><Button label="Cancel" variant="quiet" disabled={savingAudience} onPress={() => setEditingAudience(false)} /><Button label="Save audience" loading={savingAudience} onPress={() => void saveAudience()} /></> : <Button label="Change audience" variant="quiet" onPress={beginAudienceEdit} />}
+            <Button label="Stop sharing" variant="secondary" loading={stopping} onPress={() => void stopSharing()} />
           </View>
         </Card>
       ) : (
-        <Button label="Ask someone to come find me" variant="secondary" onPress={() => setAskingWho(true)} style={styles.askButton} disabled={recipients.length === 0} />
+        <Card style={styles.sectionCard}>
+          <AppText variant="body" tone="mutedText">Your device asks for location permission first. No session is created unless a current location is obtained.</AppText>
+          {myShareActive ? <AppText variant="caption" tone="mutedText" style={styles.meta}>Starting Come Find Me will replace your current family-wide share with this audience.</AppText> : null}
+          <AudiencePicker audienceType={audienceType} setAudienceType={setAudienceType} householdId={householdId} setHouseholdId={setHouseholdId} memberIds={memberIds} setMemberIds={setMemberIds} households={households} members={otherMembers} />
+          <AppText variant="label" style={styles.durationLabel}>Share for</AppText>
+          <DurationPicker value={findMeDuration} onChange={setFindMeDuration} />
+          {findMeError ? <AppText variant="caption" tone="danger" style={styles.error}>{findMeError}</AppText> : null}
+          <Button label="Start Come Find Me" loading={starting === 'come_find_me'} onPress={() => void startFindMe()} style={styles.action} />
+        </Card>
       )}
 
-      {incoming && incoming.length > 0 ? (
-        <View style={styles.incomingList}>
-          {incoming.map((request) => {
-            const requesterShare = shares?.find((item) => item.memberId === request.requester.memberId) ?? null;
-            const myOwnShare = myShareActive ? myShare : null;
-            const distanceKm = requesterShare && myOwnShare ? haversineDistanceKm(myOwnShare, requesterShare) : null;
-            return (
-              <Card key={request.id} style={[styles.incomingCard, { borderColor: theme.primary }]}>
-                <View style={styles.personRow}>
-                  <Avatar name={request.requester.displayName} imageUrl={request.requester.avatar} size={36} />
-                  <View style={styles.detailCopy}>
-                    <AppText variant="label">{request.requester.displayName} wants you to come find them</AppText>
-                    <AppText variant="caption" tone="mutedText">
-                      Asked {formatAskedAgo(request.createdAt)}
-                      {requesterShare ? ` · ${formatUpdatedAgo(requesterShare.updatedAt)}` : ''}
-                      {distanceKm !== null ? ` · ${formatDistanceKm(distanceKm)}` : ''}
-                    </AppText>
-                    {!requesterShare ? <AppText variant="caption" tone="mutedText">Their location isn’t available right now.</AppText> : null}
-                    {requesterShare && !myOwnShare ? <AppText variant="caption" tone="mutedText">Share your location to see the distance.</AppText> : null}
-                    {request.response === 'coming' ? <AppText variant="caption" tone="success">You’re on your way</AppText> : null}
-                  </View>
-                </View>
-                <View style={styles.incomingActions}>
-                  {requesterShare ? <Button label="Open in Maps" variant="quiet" onPress={() => void Linking.openURL(mapsUrl(requesterShare.latitude, requesterShare.longitude))} /> : null}
-                  {request.response !== 'coming' ? <Button label="I’m coming" variant="quiet" loading={respondingId === request.id} onPress={() => void respond(request, 'coming')} /> : null}
-                  <Button label="Dismiss" variant="quiet" loading={respondingId === request.id} onPress={() => void respond(request, 'dismissed')} />
-                </View>
-              </Card>
-            );
-          })}
-        </View>
-      ) : null}
+      <SectionHeading title="Family Map" detail={`${shares?.length ?? 0} authorized location${shares?.length === 1 ? '' : 's'}`} />
+      {shares === null && !loadError ? <View style={styles.loading}><ActivityIndicator color={theme.primary} /><AppText variant="caption" tone="mutedText">Loading family map…</AppText></View> : <FamilyMap shares={shares ?? []} selectedShareId={selectedShareId} onSelect={setSelectedShareId} />}
+      {selectedShare ? <SelectedShareCard share={selectedShare} currentMemberId={family.id} onClose={() => setSelectedShareId(null)} onDirections={() => void openMapUrl(directionsUrl(selectedShare.latitude, selectedShare.longitude))} /> : null}
+      {mapActionError ? <AppText variant="caption" tone="danger" style={styles.error}>{mapActionError}</AppText> : null}
 
-      {/* Family locations */}
-      <View style={styles.sectionHeading}>
-        <AppText variant="heading">Family locations</AppText>
-        <AppText variant="caption" tone="mutedText">{otherShares.length} sharing now</AppText>
-      </View>
-
-      {shares === null && !loadError ? (
-        <View style={styles.loading}>
-          <ActivityIndicator color={theme.primary} />
-          <AppText variant="caption" tone="mutedText" style={styles.loadingText}>Checking who’s sharing…</AppText>
-        </View>
-      ) : otherShares.length === 0 ? (
-        <Card style={styles.empty}>
-          <AppText variant="title" tone="mutedText">◎</AppText>
-          <AppText variant="label" style={styles.emptyTitle}>No one is sharing right now</AppText>
-          <AppText variant="caption" tone="mutedText" align="center">When a family member turns on sharing, they’ll show up here.</AppText>
-        </Card>
+      <SectionHeading title="Family members sharing with me" detail={`${otherShares.length} active share${otherShares.length === 1 ? '' : 's'} available to you`} />
+      {shares !== null && otherShares.length === 0 ? (
+        <Card style={styles.empty}><AppText variant="label">No active shares</AppText><AppText variant="caption" tone="mutedText" align="center">Eligible family and Come Find Me shares will appear here.</AppText></Card>
       ) : (
-        <View style={[styles.memberGrid, isWide && styles.memberGridWide]}>
-          {otherShares.map((share) => (
-            <Card key={share.memberId} style={styles.memberCard}>
-              <View style={styles.personRow}>
-                <Avatar name={share.member.displayName} imageUrl={share.member.avatar} size={40} />
-                <View style={styles.detailCopy}>
-                  <AppText variant="label">{share.member.displayName}</AppText>
-                  <AppText variant="caption" tone="mutedText">{formatRemaining(share.expiresAt)} · {formatUpdatedAgo(share.updatedAt)}</AppText>
-                  {share.accuracyMeters ? <AppText variant="caption" tone="mutedText">± {Math.round(share.accuracyMeters)} m</AppText> : null}
-                </View>
-              </View>
-              <Button label="Open in Maps" variant="quiet" onPress={() => void Linking.openURL(mapsUrl(share.latitude, share.longitude))} style={styles.stopButton} />
-            </Card>
-          ))}
-        </View>
+        <View style={[styles.shareGrid, isWide && styles.shareGridWide]}>{otherShares.map((share) => <ShareCard key={share.id} share={share} selected={share.id === selectedShareId} onSelect={() => setSelectedShareId(share.id)} onExternal={() => void openMapUrl(mapsUrl(share.latitude, share.longitude))} onDirections={() => void openMapUrl(directionsUrl(share.latitude, share.longitude))} />)}</View>
       )}
     </Screen>
   );
 }
 
-function Segment({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function SectionHeading({ title, detail }: { title: string; detail: string }) {
+  return <View style={styles.sectionHeading}><AppText variant="heading">{title}</AppText><AppText variant="caption" tone="mutedText">{detail}</AppText></View>;
+}
+
+function DurationPicker({ value, onChange }: { value: ShareDurationMinutes; onChange: (value: ShareDurationMinutes) => void }) {
+  return <View style={styles.choices}>{SHARE_DURATION_MINUTES.map((minutes) => <Choice key={minutes} label={DURATION_LABELS[minutes]} selected={value === minutes} onPress={() => onChange(minutes)} />)}</View>;
+}
+
+function AudiencePicker({ audienceType, setAudienceType, householdId, setHouseholdId, memberIds, setMemberIds, households, members }: {
+  audienceType: AudienceType;
+  setAudienceType: (value: AudienceType) => void;
+  householdId: string | null;
+  setHouseholdId: (value: string | null) => void;
+  memberIds: string[];
+  setMemberIds: (value: string[]) => void;
+  households: Household[];
+  members: FamilyMember[];
+}) {
+  const toggleMember = (id: string) => setMemberIds(memberIds.includes(id) ? memberIds.filter((value) => value !== id) : [...memberIds, id]);
+  return <View style={styles.audience}>
+    <AppText variant="label">Who can see this?</AppText>
+    <View style={styles.choices}>
+      <Choice label="Entire family" selected={audienceType === 'family'} onPress={() => setAudienceType('family')} />
+      <Choice label="Family group" selected={audienceType === 'household'} onPress={() => setAudienceType('household')} />
+      <Choice label="Specific people" selected={audienceType === 'members'} onPress={() => setAudienceType('members')} />
+    </View>
+    {audienceType === 'household' ? <View style={styles.choices}>{households.length ? households.map((household) => <Choice key={household.id} label={household.name} selected={householdId === household.id} onPress={() => setHouseholdId(household.id)} />) : <AppText variant="caption" tone="mutedText">You do not belong to a family group.</AppText>}</View> : null}
+    {audienceType === 'members' ? <View style={styles.choices}>{members.length ? members.map((member) => <Choice key={member.id} label={member.displayName} selected={memberIds.includes(member.id)} onPress={() => toggleMember(member.id)} />) : <AppText variant="caption" tone="mutedText">There are no other family members to choose.</AppText>}</View> : null}
+  </View>;
+}
+
+function Choice({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
   const scheme = useColorScheme();
   const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      style={[styles.segment, { backgroundColor: active ? theme.primarySoft : theme.input, borderColor: active ? theme.primary : theme.border }]}
-    >
-      <AppText variant="label" tone={active ? 'primary' : 'text'}>{label}</AppText>
-    </Pressable>
-  );
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[styles.choice, { backgroundColor: selected ? theme.primarySoft : theme.input, borderColor: selected ? theme.primary : theme.border }]}><AppText variant="label" tone={selected ? 'primary' : 'text'}>{label}</AppText></Pressable>;
+}
+
+function SelectedShareCard({ share, currentMemberId, onClose, onDirections }: { share: FamilyLocationShare; currentMemberId: string; onClose: () => void; onDirections: () => void }) {
+  const scheme = useColorScheme();
+  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const freshnessState = freshness(share.updatedAt);
+  const audienceLabel = share.audience.type === 'members' && share.memberId !== currentMemberId ? 'Specific people' : formatLocationAudience(share.audience);
+  return <Card elevated style={[styles.selectedCard, { borderColor: theme.primary }]}>
+    <View style={styles.selectedHeader}>
+      <View style={styles.personRow}><Avatar name={share.member.displayName} imageUrl={share.member.avatar} size={48} /><View style={styles.personCopy}><AppText variant="heading">{share.member.displayName}</AppText><AppText variant="caption" tone={share.purpose === 'come_find_me' ? 'primary' : 'mutedText'}>{share.purpose === 'come_find_me' ? 'Come Find Me' : 'Sharing location'}</AppText></View></View>
+      <Button label="Close" variant="quiet" onPress={onClose} />
+    </View>
+    <AppText variant="body" tone={freshnessState.stale ? 'danger' : 'mutedText'} style={styles.meta}>{freshnessState.label}</AppText>
+    {share.accuracyMeters !== null ? <AppText variant="caption" tone="mutedText" style={styles.meta}>Approx. ±{Math.round(share.accuracyMeters)} m</AppText> : null}
+    <AppText variant="caption" tone="mutedText" style={styles.meta}>Shared with: {audienceLabel}</AppText>
+    <Button label="Directions" variant="secondary" onPress={onDirections} style={styles.action} />
+  </Card>;
+}
+
+function ShareCard({ share, selected, onSelect, onExternal, onDirections }: { share: FamilyLocationShare; selected: boolean; onSelect: () => void; onExternal: () => void; onDirections: () => void }) {
+  const scheme = useColorScheme();
+  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const freshnessState = freshness(share.updatedAt);
+  return <Card style={[styles.memberCard, selected && { borderColor: theme.primary, borderWidth: 1 }]}>
+    <View style={styles.personRow}>
+      <Avatar name={share.member.displayName} imageUrl={share.member.avatar} size={40} />
+      <View style={styles.personCopy}>
+        <AppText variant="label">{share.member.displayName}</AppText>
+        <AppText variant="caption" tone={share.purpose === 'come_find_me' ? 'primary' : 'mutedText'}>{share.purpose === 'come_find_me' ? 'Come Find Me' : 'Sharing location'} · {formatRemaining(share.expiresAt)}</AppText>
+        <AppText variant="caption" tone={freshnessState.stale ? 'danger' : 'mutedText'}>{freshnessState.label}</AppText>
+        {share.accuracyMeters !== null ? <AppText variant="caption" tone="mutedText">Approx. ±{Math.round(share.accuracyMeters)} m</AppText> : null}
+      </View>
+    </View>
+    <View style={styles.actions}><Button label="Show on map" variant="quiet" onPress={onSelect} /><Button label="Open external" variant="quiet" onPress={onExternal} /><Button label="Directions" variant="quiet" onPress={onDirections} /></View>
+  </Card>;
 }
 
 const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl, paddingTop: spacing.xl },
-  headingCopy: { maxWidth: 640 },
   title: { marginTop: spacing.xs },
-  subtitle: { marginTop: spacing.sm },
+  subtitle: { marginTop: spacing.sm, maxWidth: 680 },
   messageCard: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.lg },
-  shareCard: { marginTop: spacing.xl, padding: spacing.xl },
-  shareActiveHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
-  liveDot: { borderRadius: 6, height: 12, width: 12 },
-  shareMeta: { marginTop: spacing.sm },
-  formError: { marginTop: spacing.md },
-  stopButton: { alignSelf: 'flex-start', marginTop: spacing.lg },
-  durationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.lg },
-  durationLabel: { marginTop: spacing.lg },
-  segment: { borderRadius: radius.pill, borderWidth: 1, minHeight: 40, paddingHorizontal: spacing.md, justifyContent: 'center' },
   sectionHeading: { alignItems: 'baseline', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.xxl },
-  findMeCard: { marginTop: spacing.md, padding: spacing.xl },
-  askButton: { alignSelf: 'flex-start', marginTop: spacing.md },
-  memberChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
-  formActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', marginTop: spacing.lg },
-  incomingList: { gap: spacing.md, marginTop: spacing.md },
-  incomingCard: { borderWidth: 1, padding: spacing.lg },
+  sectionCard: { marginTop: spacing.md, padding: spacing.xl },
+  meta: { marginTop: spacing.sm },
+  action: { alignSelf: 'flex-start', marginTop: spacing.lg },
+  actions: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.lg },
+  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  choice: { borderRadius: radius.pill, borderWidth: 1, justifyContent: 'center', minHeight: 42, paddingHorizontal: spacing.md },
+  audience: { marginTop: spacing.lg },
+  durationLabel: { marginTop: spacing.lg },
+  error: { marginTop: spacing.md },
+  loading: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
+  empty: { alignItems: 'center', gap: spacing.xs, marginTop: spacing.md, padding: spacing.xl },
+  shareGrid: { gap: spacing.md, marginTop: spacing.md },
+  shareGridWide: { flexDirection: 'row', flexWrap: 'wrap' },
+  memberCard: { flexGrow: 1, minWidth: 280, padding: spacing.lg },
+  selectedCard: { borderWidth: 1, marginTop: spacing.md, padding: spacing.lg },
+  selectedHeader: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
   personRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
-  detailCopy: { flex: 1, minWidth: 0 },
-  incomingActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
-  loading: { alignItems: 'center', paddingVertical: spacing.xxxl },
-  loadingText: { marginTop: spacing.md },
-  empty: { alignItems: 'center', justifyContent: 'center', marginTop: spacing.md, padding: spacing.xl },
-  emptyTitle: { marginBottom: spacing.xs, marginTop: spacing.sm },
-  memberGrid: { gap: spacing.md, marginTop: spacing.md },
-  memberGridWide: { flexDirection: 'row', flexWrap: 'wrap' },
-  memberCard: { flexGrow: 1, minWidth: 260, padding: spacing.lg }
+  personCopy: { flex: 1, gap: spacing.xs, minWidth: 0 }
 });
