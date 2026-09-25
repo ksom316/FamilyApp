@@ -618,3 +618,112 @@ export const familyFindMeRequests = pgTable(
     )
   ]
 );
+
+// Polls target either the whole family (householdId null) or one existing subgroup
+// (householdId set, FK-checked to belong to the same family). Open/closed state is
+// derived at read time from closesAt/closedAt and server time — there is no separate
+// stored boolean to drift out of sync.
+export const familyPolls = pgTable(
+  'family_polls',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    householdId: uuid('household_id'),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    question: text('question').notNull(),
+    description: text('description'),
+    closesAt: timestamp('closes_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_polls_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'family_polls_household_family_fk',
+      columns: [table.householdId, table.familyId],
+      foreignColumns: [households.id, households.familyId]
+    }).onDelete('cascade'),
+    unique('family_polls_id_family_unique').on(table.id, table.familyId),
+    index('family_polls_family_created_at_idx').on(table.familyId, table.createdAt),
+    index('family_polls_household_idx').on(table.householdId),
+    index('family_polls_creator_idx').on(table.createdByMemberId),
+    index('family_polls_closes_at_idx').on(table.closesAt),
+    check(
+      'family_polls_question_length',
+      sql`char_length(${table.question}) between 1 and 200 and ${table.question} = btrim(${table.question})`
+    ),
+    check(
+      'family_polls_description_length',
+      sql`${table.description} is null or (char_length(${table.description}) between 1 and 1000 and ${table.description} = btrim(${table.description}))`
+    ),
+    check('family_polls_closes_after_creation', sql`${table.closesAt} is null or ${table.closesAt} > ${table.createdAt}`)
+  ]
+);
+
+export const familyPollOptions = pgTable(
+  'family_poll_options',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    pollId: uuid('poll_id').notNull(),
+    text: text('text').notNull(),
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_poll_options_poll_family_fk',
+      columns: [table.pollId, table.familyId],
+      foreignColumns: [familyPolls.id, familyPolls.familyId]
+    }).onDelete('cascade'),
+    unique('family_poll_options_id_poll_unique').on(table.id, table.pollId),
+    uniqueIndex('family_poll_options_poll_position_unique').on(table.pollId, table.position),
+    index('family_poll_options_poll_idx').on(table.pollId),
+    check(
+      'family_poll_options_text_length',
+      sql`char_length(${table.text}) between 1 and 140 and ${table.text} = btrim(${table.text})`
+    ),
+    check('family_poll_options_position_range', sql`${table.position} between 0 and 9`)
+  ]
+);
+
+// One row per (poll, member) — changing a vote updates optionId in place rather than
+// inserting a second row, so there is never more than one active vote per member.
+export const familyPollVotes = pgTable(
+  'family_poll_votes',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    pollId: uuid('poll_id').notNull(),
+    memberId: uuid('member_id').notNull(),
+    optionId: uuid('option_id').notNull(),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_poll_votes_poll_family_fk',
+      columns: [table.pollId, table.familyId],
+      foreignColumns: [familyPolls.id, familyPolls.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_poll_votes_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    // Ties the vote's option to the SAME poll being voted on — a vote can never
+    // reference an option belonging to a different poll.
+    foreignKey({
+      name: 'family_poll_votes_option_poll_fk',
+      columns: [table.optionId, table.pollId],
+      foreignColumns: [familyPollOptions.id, familyPollOptions.pollId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_poll_votes_poll_member_unique').on(table.pollId, table.memberId),
+    index('family_poll_votes_option_idx').on(table.optionId)
+  ]
+);

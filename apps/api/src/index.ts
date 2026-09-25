@@ -42,6 +42,15 @@ import {
 } from './memories-service';
 import { createEvent, createTask, deleteEvent, deleteTask, listPlans, PlanServiceError, setTaskCompletion, updateEvent, updateTask } from './plans-service';
 import {
+  closePoll,
+  createPoll,
+  deletePoll,
+  getPoll,
+  listPolls,
+  PollServiceError,
+  voteOnPoll
+} from './polls-service';
+import {
   createPrivateMessage,
   listPrivateConversations,
   listPrivateMessages,
@@ -248,6 +257,79 @@ app.delete('/families/:familyId/households/:householdId/members/:memberId', sess
     return c.json(await removeHouseholdMember(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('householdId'), c.req.param('memberId')));
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof HouseholdServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/polls', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const polls = await listPolls(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json({ polls });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PollServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/polls/:pollId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const poll = await getPoll(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('pollId'));
+    return c.json({ poll });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PollServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/polls', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const poll = await createPoll(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ poll }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PollServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/polls/:pollId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await deletePoll(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('pollId'));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PollServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/polls/:pollId/vote', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ optionId?: unknown }>();
+    const poll = await voteOnPoll(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('pollId'), body.optionId);
+    return c.json({ poll });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PollServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/polls/:pollId/close', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const poll = await closePoll(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('pollId'));
+    return c.json({ poll });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PollServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
     throw error;
   }
 });

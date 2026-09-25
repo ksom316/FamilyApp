@@ -12,6 +12,7 @@
     "@better-auth/expo": "^1.7.5",
     "@familyapp/config": "workspace:*",
     "@familyapp/shared": "workspace:*",
+    "@react-native-community/datetimepicker": "8.4.1",
     "better-auth": "^1.7.5",
     "expo": "^53.0.0",
     "expo-clipboard": "~7.1.5",
