@@ -120,6 +120,13 @@
       "when": 1790330490152,
       "tag": "0016_nappy_the_hunter",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790331664927,
+      "tag": "0017_strong_leader",
+      "breakpoints": true
     }
   ]
 }

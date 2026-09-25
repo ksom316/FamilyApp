@@ -14,6 +14,14 @@ import {
   updateCalendarEvent
 } from './calendar-service';
 import { CheckInServiceError, createCheckIn, listRecentCheckIns } from './check-ins-service';
+import {
+  acknowledgeEmergency,
+  createEmergency,
+  EmergencyServiceError,
+  getEmergency,
+  listEmergencies,
+  resolveEmergency
+} from './emergency-service';
 import { ChatServiceError, createFamilyMessage, listFamilyMessages } from './chat-service';
 import { acceptFamilyInvitation, createFamily, createFamilyInvitation, FamilyServiceError, listFamilyMembers, listFamilyMemberships } from './family-service';
 import {
@@ -1462,6 +1470,67 @@ app.post('/families/:familyId/check-ins', sessionMiddleware, async (c) => {
     return c.json({ checkIn }, 201);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof CheckInServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/emergencies', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const emergencies = await listEmergencies(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json(emergencies);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof EmergencyServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/emergencies/:incidentId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const incident = await getEmergency(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('incidentId'));
+    return c.json({ incident });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof EmergencyServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/emergencies', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const incident = await createEmergency(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ incident }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof EmergencyServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/emergencies/:incidentId/acknowledge', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const incident = await acknowledgeEmergency(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('incidentId'), body);
+    return c.json({ incident });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof EmergencyServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/emergencies/:incidentId/resolve', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const incident = await resolveEmergency(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('incidentId'));
+    return c.json({ incident });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof EmergencyServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
     throw error;
   }
 });

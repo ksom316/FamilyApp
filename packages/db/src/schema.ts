@@ -1132,3 +1132,77 @@ export const familyCheckIns = pgTable(
     )
   ]
 );
+
+// A family-wide urgent alert. FamilyApp only ever coordinates the family itself here —
+// nothing in this table or the service built on it contacts police/ambulance/fire/any
+// outside service, and resolution is a plain in-app status flip, not a "case closed with
+// authorities" signal.
+export const familyEmergencyIncidents = pgTable(
+  'family_emergency_incidents',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    emergencyType: text('emergency_type').notNull(),
+    message: text('message'),
+    status: text('status').notNull().default('active'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedByMemberId: uuid('resolved_by_member_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_emergency_incidents_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_emergency_incidents_resolver_family_fk',
+      columns: [table.resolvedByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('set null'),
+    unique('family_emergency_incidents_id_family_unique').on(table.id, table.familyId),
+    index('family_emergency_incidents_family_status_idx').on(table.familyId, table.status, table.createdAt),
+    check('family_emergency_incidents_type_allowed', sql`${table.emergencyType} in ('need_help', 'medical', 'safety_concern', 'other')`),
+    check('family_emergency_incidents_status_allowed', sql`${table.status} in ('active', 'resolved')`),
+    check(
+      'family_emergency_incidents_message_length',
+      sql`${table.message} is null or (char_length(${table.message}) between 1 and 300 and ${table.message} = btrim(${table.message}))`
+    ),
+    check(
+      'family_emergency_incidents_resolution_consistency',
+      sql`(${table.status} = 'resolved') = (${table.resolvedAt} is not null) and (${table.resolvedAt} is not null) = (${table.resolvedByMemberId} is not null)`
+    )
+  ]
+);
+
+// "Seen" vs "responding" for a single incident — one row per (incident, member), never a
+// second table to track "current" acknowledgement since there's only ever one per member.
+export const familyEmergencyAcknowledgements = pgTable(
+  'family_emergency_acknowledgements',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    incidentId: uuid('incident_id').notNull(),
+    memberId: uuid('member_id').notNull(),
+    responseStatus: text('response_status').notNull().default('seen'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_emergency_acks_incident_family_fk',
+      columns: [table.incidentId, table.familyId],
+      foreignColumns: [familyEmergencyIncidents.id, familyEmergencyIncidents.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_emergency_acks_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_emergency_acks_incident_member_unique').on(table.incidentId, table.memberId),
+    index('family_emergency_acks_incident_idx').on(table.incidentId),
+    check('family_emergency_acks_response_allowed', sql`${table.responseStatus} in ('seen', 'responding')`)
+  ]
+);

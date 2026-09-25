@@ -9,6 +9,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 import { getFamilyCheckIns, postCheckIn, type FamilyCheckIn } from '../../lib/check-ins';
+import { getFamilyEmergencies, type EmergencyIncident } from '../../lib/emergency';
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyMembers } from '../../lib/families';
 import { getFamilyLocationShares, getIncomingFindMeRequests, type FamilyLocationShare, type IncomingFindMeRequest } from '../../lib/location';
@@ -64,6 +65,7 @@ export default function FamilyHomeScreen() {
   const [myLatestCheckIn, setMyLatestCheckIn] = useState<FamilyCheckIn | null>(null);
   const [checkInsFailed, setCheckInsFailed] = useState(false);
   const [checkInSending, setCheckInSending] = useState<'safe' | 'arrived' | null>(null);
+  const [activeEmergencies, setActiveEmergencies] = useState<EmergencyIncident[] | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -112,6 +114,11 @@ export default function FamilyHomeScreen() {
       if (active) setMyLatestCheckIn(checkIns.find((item) => item.member.memberId === family.id) ?? null);
     }).catch(() => {
       if (active) setCheckInsFailed(true);
+    });
+    void getFamilyEmergencies(family.familyId).then((result) => {
+      if (active) setActiveEmergencies(result.active);
+    }).catch(() => {
+      // The compact Emergency shortcut degrades gracefully with no count shown.
     });
     return () => { active = false; };
   }, [family.familyId, family.id]);
@@ -167,6 +174,16 @@ export default function FamilyHomeScreen() {
         </View>
       </View>
 
+      {activeEmergencies && activeEmergencies.length > 0 ? (
+        <Card style={[styles.emergencyBanner, { backgroundColor: theme.dangerSoft, borderColor: theme.danger }]}>
+          <View style={styles.emergencyBannerCopy}>
+            <AppText variant="label" tone="danger">Family Emergency</AppText>
+            <AppText variant="caption" tone="mutedText">{activeEmergencies.length} active alert{activeEmergencies.length === 1 ? '' : 's'}</AppText>
+          </View>
+          <Button label="View →" variant="quiet" onPress={() => router.push('/(family)/emergency' as never)} />
+        </Card>
+      ) : null}
+
       <View style={[styles.overview, !isCompact && styles.overviewWide]}>
         <Card style={[styles.overviewCard, { backgroundColor: theme.primarySoft }]}>
           <AppText variant="caption" tone="mutedText">PEOPLE</AppText>
@@ -217,6 +234,12 @@ export default function FamilyHomeScreen() {
           <Button label="Open Location" variant="quiet" onPress={() => router.push('/(family)/location' as never)} style={styles.actionButton} />
         </Card>
         <PlanActionCard title="Add a task" detail="Keep home in sync" mark="✓" color={theme.successSoft} textColor={theme.success} onPress={() => router.push('/(family)/plans' as never)} />
+        <Card style={styles.actionCard}>
+          <View style={[styles.actionMark, { backgroundColor: theme.dangerSoft }]}><AppText variant="heading" tone="danger">⚠</AppText></View>
+          <AppText variant="label" style={styles.actionTitle}>Emergency</AppText>
+          <AppText variant="caption" tone="mutedText">Alert your family if something urgent comes up</AppText>
+          <Button label="Open Emergency Hub" variant="quiet" onPress={() => router.push('/(family)/emergency' as never)} style={styles.actionButton} />
+        </Card>
         <Card style={styles.actionCard}>
           <View style={[styles.actionMark, { backgroundColor: theme.primarySoft }]}><AppText variant="heading" tone="primary">✳</AppText></View>
           <AppText variant="label" style={styles.actionTitle}>Memories</AppText>
@@ -310,6 +333,8 @@ const styles = StyleSheet.create({
   welcomeArtWide: { flex: 0.78, minWidth: 280 },
   artOrb: { borderRadius: 100, height: 160, left: -35, position: 'absolute', top: 85, width: 160 },
   artOrbSmall: { borderRadius: 40, height: 54, position: 'absolute', right: 32, top: 26, width: 54 },
+  emergencyBanner: { alignItems: 'center', borderWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.lg, padding: spacing.lg },
+  emergencyBannerCopy: { flex: 1, minWidth: 0 },
   overview: { gap: spacing.md, marginTop: spacing.lg },
   overviewWide: { flexDirection: 'row' },
   overviewCard: { flex: 1, minHeight: 128, justifyContent: 'center' },
