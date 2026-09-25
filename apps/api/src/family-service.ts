@@ -69,6 +69,9 @@ export async function listFamilyMembers(db: Database, userId: string, familyId: 
       userId: familyMembers.userId,
       displayName: users.name,
       avatar: users.image,
+      identityType: users.identityType,
+      avatarConfig: users.avatarConfig,
+      hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`,
       role: familyMembers.role,
       joinedAt: familyMembers.joinedAt
     })

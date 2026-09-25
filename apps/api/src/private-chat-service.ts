@@ -6,7 +6,8 @@ import {
   familyPrivateConversationParticipants,
   familyPrivateConversations,
   familyPrivateMessages,
-  users
+  users,
+  type AvatarConfig
 } from '@familyapp/db/schema';
 
 import { MAX_MESSAGE_LENGTH, readMessageText } from './chat-service';
@@ -48,6 +49,9 @@ const recipientSelection = {
   memberId: familyMembers.id,
   displayName: users.name,
   avatar: users.image,
+  identityType: users.identityType,
+  avatarConfig: users.avatarConfig,
+  hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`,
   role: familyMembers.role
 };
 
@@ -110,6 +114,9 @@ type InboxRow = {
   recipientMemberId: string;
   recipientDisplayName: string;
   recipientAvatar: string | null;
+  recipientIdentityType: string;
+  recipientAvatarConfig: AvatarConfig | null;
+  recipientHasPhoto: boolean;
   recipientRole: 'owner' | 'guardian' | 'member';
   latestMessageId: string | null;
   latestMessageText: string | null;
@@ -129,6 +136,9 @@ export async function listPrivateConversations(db: Database, userId: string, fam
       recipient.id as "recipientMemberId",
       recipient_user.display_name as "recipientDisplayName",
       recipient_user.avatar_url as "recipientAvatar",
+      recipient_user.identity_type as "recipientIdentityType",
+      recipient_user.avatar_config as "recipientAvatarConfig",
+      (recipient_user.photo_object_key is not null) as "recipientHasPhoto",
       recipient.role as "recipientRole",
       latest.id as "latestMessageId",
       latest.text as "latestMessageText",
@@ -177,6 +187,9 @@ export async function listPrivateConversations(db: Database, userId: string, fam
       memberId: row.recipientMemberId,
       displayName: row.recipientDisplayName,
       avatar: row.recipientAvatar,
+      identityType: row.recipientIdentityType,
+      avatarConfig: row.recipientAvatarConfig,
+      hasPhoto: row.recipientHasPhoto,
       role: row.recipientRole
     },
     latestMessage: row.latestMessageId ? {

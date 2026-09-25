@@ -115,6 +115,15 @@ import {
   updateSavedMenu
 } from './saved-menus-service';
 import { listNotifications, markAllNotificationsRead, markNotificationRead, NotificationServiceError } from './notifications-service';
+import {
+  getMemberProfilePhotoMedia,
+  getMyProfileIdentity,
+  getMyProfilePhotoMedia,
+  ProfileServiceError,
+  removeMyProfilePhoto,
+  updateMyIdentity,
+  uploadMyProfilePhoto
+} from './profile-service';
 import { sessionMiddleware, type ApiEnv } from './session-middleware';
 import {
   addShoppingItem,
@@ -201,6 +210,28 @@ app.use('/families/*', async (c, next) => {
   })(c, next);
 });
 
+// The profile identity endpoints (/me, /me/identity, /me/photo) live outside the
+// /families/* prefix, so they never matched either of the CORS middlewares above — the API
+// still answered them correctly, but with no Access-Control-Allow-Origin/-Credentials
+// headers, so a cross-origin browser (e.g. the web dev server on :8081 calling the API on
+// :8787) silently discarded the response. Same allowlist/credentials handling as the other
+// authenticated routes, just matched against this prefix too.
+app.use('/me', async (c, next) => {
+  const allowedOrigins = getTrustedOrigins(c.env);
+  return cors({
+    origin: (origin) => (allowedOrigins.includes(origin) ? origin : ''),
+    credentials: true
+  })(c, next);
+});
+
+app.use('/me/*', async (c, next) => {
+  const allowedOrigins = getTrustedOrigins(c.env);
+  return cors({
+    origin: (origin) => (allowedOrigins.includes(origin) ? origin : ''),
+    credentials: true
+  })(c, next);
+});
+
 app.use('/families', async (c, next) => {
   const allowedOrigins = getTrustedOrigins(c.env);
   return cors({
@@ -222,6 +253,73 @@ app.get('/me', sessionMiddleware, (c) => {
     user: session.user,
     session: session.session
   });
+});
+
+app.get('/me/identity', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const identity = await getMyProfileIdentity(createDatabase(c.env.DATABASE_URL), session.user.id);
+    return c.json({ identity });
+  } catch (error) {
+    if (error instanceof ProfileServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 404 | 413 | 415 | 502 | 503);
+    throw error;
+  }
+});
+
+app.patch('/me/identity', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const identity = await updateMyIdentity(createDatabase(c.env.DATABASE_URL), session.user.id, await c.req.json());
+    return c.json({ identity });
+  } catch (error) {
+    if (error instanceof ProfileServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 404 | 413 | 415 | 502 | 503);
+    throw error;
+  }
+});
+
+app.get('/me/photo', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const { objectKey, mimeType } = await getMyProfilePhotoMedia(createDatabase(c.env.DATABASE_URL), session.user.id);
+    if (!c.env.MEMORIES_BUCKET) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
+    const object = await c.env.MEMORIES_BUCKET.get(objectKey);
+    if (!object) return c.json({ error: 'No profile photo is set.', code: 'photo_not_found' }, 404);
+    return c.body(object.body, 200, { 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=3600' });
+  } catch (error) {
+    if (error instanceof ProfileServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 404 | 413 | 415 | 502 | 503);
+    throw error;
+  }
+});
+
+app.post('/me/photo', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const form = await c.req.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) throw new ProfileServiceError('invalid_photo', 'Choose a photo to upload.');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const identity = await uploadMyProfilePhoto(createDatabase(c.env.DATABASE_URL), session.user.id, bytes, c.env.MEMORIES_BUCKET);
+    return c.json({ identity }, 201);
+  } catch (error) {
+    if (error instanceof ProfileServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 404 | 413 | 415 | 502 | 503);
+    throw error;
+  }
+});
+
+app.delete('/me/photo', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const identity = await removeMyProfilePhoto(createDatabase(c.env.DATABASE_URL), session.user.id, c.env.MEMORIES_BUCKET);
+    return c.json({ identity });
+  } catch (error) {
+    if (error instanceof ProfileServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 404 | 413 | 415 | 502 | 503);
+    throw error;
+  }
 });
 
 app.get('/families/memberships', sessionMiddleware, async (c) => {
@@ -246,6 +344,25 @@ app.get('/families/:familyId/members', sessionMiddleware, async (c) => {
   } catch (error) {
     if (error instanceof FamilyServiceError) {
       return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 409 | 410);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/members/:memberId/photo', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const { objectKey, mimeType } = await getMemberProfilePhotoMedia(
+      createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('memberId')
+    );
+    if (!c.env.MEMORIES_BUCKET) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
+    const object = await c.env.MEMORIES_BUCKET.get(objectKey);
+    if (!object) return c.json({ error: 'No profile photo is set.', code: 'photo_not_found' }, 404);
+    return c.body(object.body, 200, { 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=3600' });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ProfileServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
     }
     throw error;
   }

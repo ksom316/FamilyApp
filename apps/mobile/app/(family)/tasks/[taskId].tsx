@@ -4,9 +4,9 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Screen } from '../../../components/Screen';
 import { TaskEditor } from '../../../components/TaskEditor';
 import { useCurrentFamily } from '../../../lib/family-context';
@@ -166,7 +166,7 @@ export default function TaskDetailScreen() {
 
       <Card elevated style={styles.headerCard}>
         <View style={styles.headerRow}>
-          <Avatar name={task.createdBy.displayName} imageUrl={task.createdBy.avatar} size={48} />
+          <MemberAvatar member={task.createdBy} familyId={family.familyId} size={48} />
           <View style={styles.headerCopy}>
             <AppText variant="heading">{task.title}</AppText>
             <AppText variant="caption" tone="mutedText">
@@ -210,7 +210,7 @@ export default function TaskDetailScreen() {
         {task.assignees.map((assignee) => (
           <Card key={assignee.memberId} style={styles.assigneeCard}>
             <View style={styles.personRow}>
-              <Avatar name={assignee.displayName} imageUrl={assignee.avatar} size={36} />
+              <MemberAvatar member={assignee} familyId={family.familyId} size={36} />
               <View style={styles.detailCopy}>
                 <AppText variant="label">{assignee.displayName}</AppText>
                 <AppText variant="caption" tone={assignee.completedAt ? 'success' : 'mutedText'}>

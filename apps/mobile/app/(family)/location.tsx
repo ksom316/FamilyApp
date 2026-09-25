@@ -5,10 +5,10 @@ import { useFocusEffect } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
-import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { FamilyMap } from '../../components/FamilyMap';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { Screen } from '../../components/Screen';
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyMembers, type FamilyMember } from '../../lib/families';
@@ -311,14 +311,14 @@ export default function LocationScreen() {
 
       <SectionHeading title="Family Map" detail={`${shares?.length ?? 0} authorized location${shares?.length === 1 ? '' : 's'}`} />
       {shares === null && !loadError ? <View style={styles.loading}><ActivityIndicator color={theme.primary} /><AppText variant="caption" tone="mutedText">Loading family map…</AppText></View> : <FamilyMap shares={shares ?? []} selectedShareId={selectedShareId} onSelect={setSelectedShareId} />}
-      {selectedShare ? <SelectedShareCard share={selectedShare} currentMemberId={family.id} onClose={() => setSelectedShareId(null)} onDirections={() => void openMapUrl(directionsUrl(selectedShare.latitude, selectedShare.longitude))} /> : null}
+      {selectedShare ? <SelectedShareCard share={selectedShare} currentMemberId={family.id} familyId={family.familyId} onClose={() => setSelectedShareId(null)} onDirections={() => void openMapUrl(directionsUrl(selectedShare.latitude, selectedShare.longitude))} /> : null}
       {mapActionError ? <AppText variant="caption" tone="danger" style={styles.error}>{mapActionError}</AppText> : null}
 
       <SectionHeading title="Family members sharing with me" detail={`${otherShares.length} active share${otherShares.length === 1 ? '' : 's'} available to you`} />
       {shares !== null && otherShares.length === 0 ? (
         <Card style={styles.empty}><AppText variant="label">No active shares</AppText><AppText variant="caption" tone="mutedText" align="center">Eligible family and Come Find Me shares will appear here.</AppText></Card>
       ) : (
-        <View style={[styles.shareGrid, isWide && styles.shareGridWide]}>{otherShares.map((share) => <ShareCard key={share.id} share={share} selected={share.id === selectedShareId} onSelect={() => setSelectedShareId(share.id)} onExternal={() => void openMapUrl(mapsUrl(share.latitude, share.longitude))} onDirections={() => void openMapUrl(directionsUrl(share.latitude, share.longitude))} />)}</View>
+        <View style={[styles.shareGrid, isWide && styles.shareGridWide]}>{otherShares.map((share) => <ShareCard key={share.id} share={share} selected={share.id === selectedShareId} familyId={family.familyId} onSelect={() => setSelectedShareId(share.id)} onExternal={() => void openMapUrl(mapsUrl(share.latitude, share.longitude))} onDirections={() => void openMapUrl(directionsUrl(share.latitude, share.longitude))} />)}</View>
       )}
     </Screen>
   );
@@ -361,14 +361,14 @@ function Choice({ label, selected, onPress }: { label: string; selected: boolean
   return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[styles.choice, { backgroundColor: selected ? theme.primarySoft : theme.input, borderColor: selected ? theme.primary : theme.border }]}><AppText variant="label" tone={selected ? 'primary' : 'text'}>{label}</AppText></Pressable>;
 }
 
-function SelectedShareCard({ share, currentMemberId, onClose, onDirections }: { share: FamilyLocationShare; currentMemberId: string; onClose: () => void; onDirections: () => void }) {
+function SelectedShareCard({ share, currentMemberId, familyId, onClose, onDirections }: { share: FamilyLocationShare; currentMemberId: string; familyId: string; onClose: () => void; onDirections: () => void }) {
   const scheme = useColorScheme();
   const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
   const freshnessState = freshness(share.updatedAt);
   const audienceLabel = share.audience.type === 'members' && share.memberId !== currentMemberId ? 'Specific people' : formatLocationAudience(share.audience);
   return <Card elevated style={[styles.selectedCard, { borderColor: theme.primary }]}>
     <View style={styles.selectedHeader}>
-      <View style={styles.personRow}><Avatar name={share.member.displayName} imageUrl={share.member.avatar} size={48} /><View style={styles.personCopy}><AppText variant="heading">{share.member.displayName}</AppText><AppText variant="caption" tone={share.purpose === 'come_find_me' ? 'primary' : 'mutedText'}>{share.purpose === 'come_find_me' ? 'Come Find Me' : 'Sharing location'}</AppText></View></View>
+      <View style={styles.personRow}><MemberAvatar member={share.member} familyId={familyId} size={48} /><View style={styles.personCopy}><AppText variant="heading">{share.member.displayName}</AppText><AppText variant="caption" tone={share.purpose === 'come_find_me' ? 'primary' : 'mutedText'}>{share.purpose === 'come_find_me' ? 'Come Find Me' : 'Sharing location'}</AppText></View></View>
       <Button label="Close" variant="quiet" onPress={onClose} />
     </View>
     <AppText variant="body" tone={freshnessState.stale ? 'danger' : 'mutedText'} style={styles.meta}>{freshnessState.label}</AppText>
@@ -378,13 +378,13 @@ function SelectedShareCard({ share, currentMemberId, onClose, onDirections }: { 
   </Card>;
 }
 
-function ShareCard({ share, selected, onSelect, onExternal, onDirections }: { share: FamilyLocationShare; selected: boolean; onSelect: () => void; onExternal: () => void; onDirections: () => void }) {
+function ShareCard({ share, selected, familyId, onSelect, onExternal, onDirections }: { share: FamilyLocationShare; selected: boolean; familyId: string; onSelect: () => void; onExternal: () => void; onDirections: () => void }) {
   const scheme = useColorScheme();
   const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
   const freshnessState = freshness(share.updatedAt);
   return <Card style={[styles.memberCard, selected && { borderColor: theme.primary, borderWidth: 1 }]}>
     <View style={styles.personRow}>
-      <Avatar name={share.member.displayName} imageUrl={share.member.avatar} size={40} />
+      <MemberAvatar member={share.member} familyId={familyId} size={40} />
       <View style={styles.personCopy}>
         <AppText variant="label">{share.member.displayName}</AppText>
         <AppText variant="caption" tone={share.purpose === 'come_find_me' ? 'primary' : 'mutedText'}>{share.purpose === 'come_find_me' ? 'Come Find Me' : 'Sharing location'} · {formatRemaining(share.expiresAt)}</AppText>

@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 
 export type FamilyMembership = {
   id: string;
@@ -13,6 +14,9 @@ export type FamilyMember = {
   userId: string;
   displayName: string;
   avatar: string | null;
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
   role: 'owner' | 'guardian' | 'member';
   joinedAt: string;
 };

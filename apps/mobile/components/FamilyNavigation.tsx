@@ -5,9 +5,9 @@ import { router, usePathname } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
 import { AppText } from './AppText';
-import { Avatar } from './Avatar';
 import { BrandMark } from './BrandMark';
 import { Button } from './Button';
+import { MemberAvatar } from './MemberAvatar';
 import { authClient } from '../lib/auth-client';
 import type { FamilyMembership } from '../lib/families';
 import {
@@ -16,6 +16,7 @@ import {
   subscribeToAttentionRefresh,
   type NavigationAttentionCounts
 } from '../lib/navigation-attention';
+import { getMyIdentity, type ProfileIdentity } from '../lib/profile';
 
 const ATTENTION_POLL_INTERVAL_MS = 30_000;
 // Which nav item each attention count belongs to. Chat combines group-chat unread (this
@@ -78,6 +79,7 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
   const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
   const pathname = usePathname();
   const [counts, setCounts] = useState<NavigationAttentionCounts>(EMPTY_NAVIGATION_ATTENTION_COUNTS);
+  const [identity, setIdentity] = useState<ProfileIdentity | null>(null);
   const activeRef = useRef(true);
   const inFlightRef = useRef(false);
 
@@ -92,24 +94,38 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
     }
   }, [family.familyId]);
 
+  // The sidebar's own logged-in-account preview, kept fresh on the exact same cadence as
+  // the badge counts above (mount, 30s poll, app-foreground, and on-demand via
+  // requestAttentionRefresh) rather than adding a second refresh mechanism.
+  const loadIdentity = useCallback(async () => {
+    try {
+      const result = await getMyIdentity();
+      if (activeRef.current) setIdentity(result);
+    } catch {
+      // Non-critical preview data — fall back silently to the initials rendering.
+    }
+  }, []);
+
   useEffect(() => {
     activeRef.current = true;
     void loadCounts();
+    void loadIdentity();
     const interval = setInterval(() => void loadCounts(), ATTENTION_POLL_INTERVAL_MS);
     // Also refresh on return to the app (foreground), not just on a fixed cadence.
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void loadCounts();
+      if (state === 'active') { void loadCounts(); void loadIdentity(); }
     });
     // And refresh immediately when a screen reports it just changed a read-state (e.g.
-    // marking chat read) — no new timer, just an on-demand call to the same loader.
-    const unsubscribeAttentionRefresh = subscribeToAttentionRefresh(() => void loadCounts());
+    // marking chat read, or updating a profile identity) — no new timer, just an on-demand
+    // call to the same loaders.
+    const unsubscribeAttentionRefresh = subscribeToAttentionRefresh(() => { void loadCounts(); void loadIdentity(); });
     return () => {
       activeRef.current = false;
       clearInterval(interval);
       subscription.remove();
       unsubscribeAttentionRefresh();
     };
-  }, [loadCounts]);
+  }, [loadCounts, loadIdentity]);
 
   return (
     <View style={[styles.sidebar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -147,8 +163,21 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
         ))}
       </ScrollView>
       <View style={[styles.profile, { borderColor: theme.border }]}>
-        <Avatar name={session?.user.name} imageUrl={session?.user.image} size={40} />
-        <View style={styles.profileCopy}><AppText variant="label" numberOfLines={1}>{session?.user.name ?? 'Your account'}</AppText><AppText variant="caption" tone="mutedText" numberOfLines={1}>{session?.user.email ?? 'Family member'}</AppText></View>
+        <Pressable accessibilityRole="button" onPress={() => router.navigate('/(family)/profile' as never)} style={styles.profileTouchArea}>
+          <MemberAvatar
+            member={{
+              displayName: session?.user.name,
+              avatar: session?.user.image,
+              identityType: identity?.identityType,
+              avatarConfig: identity?.avatarConfig,
+              hasPhoto: identity?.hasPhoto,
+              memberId: family.id
+            }}
+            familyId={family.familyId}
+            size={40}
+          />
+          <View style={styles.profileCopy}><AppText variant="label" numberOfLines={1}>{session?.user.name ?? 'Your account'}</AppText><AppText variant="caption" tone="mutedText" numberOfLines={1}>{session?.user.email ?? 'Family member'}</AppText></View>
+        </Pressable>
         <Button label="Log out" onPress={() => void authClient.signOut()} variant="quiet" />
       </View>
     </View>
@@ -215,6 +244,7 @@ const styles = StyleSheet.create({
   navBadge: { alignItems: 'center', borderRadius: 9, height: 18, justifyContent: 'center', minWidth: 18, paddingHorizontal: 3 },
   navBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
   profile: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, paddingBottom: spacing.lg, paddingTop: spacing.md },
+  profileTouchArea: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.sm, minWidth: 0 },
   profileCopy: { flex: 1, minWidth: 0 },
   mobileHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 64, paddingHorizontal: spacing.md },
   mobileHeaderRight: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },

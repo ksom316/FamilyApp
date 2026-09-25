@@ -7,6 +7,7 @@ import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 
 const destinations = [
+  { route: 'profile', title: 'Profile picture & avatar', detail: 'Choose a photo, a FamilyApp Avatar, or initials' },
   { route: 'notifications', title: 'Notifications', detail: 'Activity across your family, in one place' },
   { route: 'tasks', title: 'Tasks', detail: 'Chores and to-dos your family can share' },
   { route: 'chat', title: 'Family chat', detail: 'Little notes and conversations' },

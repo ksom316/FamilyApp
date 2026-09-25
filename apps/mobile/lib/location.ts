@@ -1,9 +1,18 @@
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 
 export const SHARE_DURATION_MINUTES = [15, 60, 240] as const;
 export type ShareDurationMinutes = (typeof SHARE_DURATION_MINUTES)[number];
 
-export type LocationPerson = { memberId: string; displayName: string; avatar: string | null; role: 'owner' | 'guardian' | 'member' };
+export type LocationPerson = {
+  memberId: string;
+  displayName: string;
+  avatar: string | null;
+  role: 'owner' | 'guardian' | 'member';
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
+};
 
 export type LocationAudience =
   | { type: 'family' }

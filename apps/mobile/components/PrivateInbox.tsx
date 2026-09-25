@@ -4,8 +4,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
 import { AppText } from './AppText';
-import { Avatar } from './Avatar';
 import { Card } from './Card';
+import { MemberAvatar } from './MemberAvatar';
 import { FamilyApiError, getFamilyMembers, type FamilyMember } from '../lib/families';
 import {
   getPrivateConversations,
@@ -201,7 +201,7 @@ export function PrivateInbox({ familyId, currentMemberId, active }: {
                   pressed && styles.pressed
                 ]}
               >
-                <Avatar name={row.member.displayName} imageUrl={row.member.avatar} size={48} />
+                <MemberAvatar member={{ ...row.member, memberId: row.member.id }} familyId={familyId} size={48} />
                 <View style={styles.conversationCopy}>
                   <View style={styles.conversationTitleRow}>
                     <AppText variant="label" numberOfLines={1} style={styles.recipientName}>{row.member.displayName}</AppText>

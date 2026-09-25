@@ -4,9 +4,9 @@ import { router, useFocusEffect } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
-import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { Screen } from '../../components/Screen';
 import { TaskEditor } from '../../components/TaskEditor';
 import { useCurrentFamily } from '../../lib/family-context';
@@ -156,7 +156,7 @@ export default function TasksScreen() {
             <Pressable key={task.id} accessibilityRole="button" onPress={() => router.push(`/(family)/tasks/${task.id}` as never)}>
               <Card style={styles.taskCard}>
                 <View style={styles.taskRow}>
-                  <Avatar name={task.createdBy.displayName} imageUrl={task.createdBy.avatar} size={36} />
+                  <MemberAvatar member={task.createdBy} familyId={family.familyId} size={36} />
                   <View style={styles.detailCopy}>
                     <AppText variant="label" numberOfLines={2}>{task.title}</AppText>
                     <AppText variant="caption" tone="mutedText">

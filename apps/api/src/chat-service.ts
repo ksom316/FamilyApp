@@ -43,6 +43,9 @@ const messageSelection = {
     memberId: familyMembers.id,
     displayName: users.name,
     avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`,
     role: familyMembers.role
   }
 };

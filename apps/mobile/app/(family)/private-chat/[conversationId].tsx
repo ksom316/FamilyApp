@@ -18,9 +18,9 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Screen } from '../../../components/Screen';
 import { useCurrentFamily } from '../../../lib/family-context';
 import { requestAttentionRefresh } from '../../../lib/navigation-attention';
@@ -165,7 +165,7 @@ export default function PrivateConversationScreen() {
           <View style={styles.headerCopy}>
             <AppText accessibilityRole="link" onPress={() => router.replace('/(family)/chat' as never)} variant="label" tone="primary">‹ Back to Chat</AppText>
             <View style={styles.recipientHeader}>
-              {conversation ? <Avatar name={conversation.recipient.displayName} imageUrl={conversation.recipient.avatar} size={48} /> : null}
+              {conversation ? <MemberAvatar member={{ ...conversation.recipient, memberId: conversation.recipient.memberId }} familyId={family.familyId} size={48} /> : null}
               <View style={styles.recipientCopy}>
                 <AppText variant={isDesktop ? 'title' : 'heading'}>{conversation?.recipient.displayName ?? 'Private conversation'}</AppText>
                 <AppText variant="caption" tone="mutedText">Private · only visible to the two participants</AppText>
@@ -213,7 +213,7 @@ export default function PrivateConversationScreen() {
                 const isMine = message.senderMemberId === family.id;
                 return (
                   <View key={message.id} style={[styles.messageRow, isMine && styles.myMessageRow]}>
-                    {!isMine ? <Avatar name={message.sender.displayName} imageUrl={message.sender.avatar} size={34} /> : null}
+                    {!isMine ? <MemberAvatar member={{ ...message.sender, memberId: message.sender.memberId }} familyId={family.familyId} size={34} /> : null}
                     <View style={[styles.messageCluster, { maxWidth: isDesktop ? 620 : '84%' }, isMine && styles.myMessageCluster]}>
                       <View style={[
                         styles.bubble,

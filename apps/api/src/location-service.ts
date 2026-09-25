@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
 import {
@@ -134,7 +134,10 @@ const shareSelection = {
     memberId: familyMembers.id,
     displayName: users.name,
     avatar: users.image,
-    role: familyMembers.role
+    role: familyMembers.role,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   }
 };
 

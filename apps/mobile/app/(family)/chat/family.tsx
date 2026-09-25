@@ -21,6 +21,7 @@ import { AppText } from '../../../components/AppText';
 import { Avatar } from '../../../components/Avatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Screen } from '../../../components/Screen';
 import {
   ChatApiError,
@@ -228,7 +229,7 @@ export default function FamilyChatScreen() {
                 const isMine = message.senderMemberId === family.id;
                 return (
                   <View key={message.id} style={[styles.messageRow, isMine && styles.myMessageRow]}>
-                    {!isMine ? <Avatar name={message.sender.displayName} imageUrl={message.sender.avatar} size={34} /> : null}
+                    {!isMine ? <MemberAvatar member={{ ...message.sender, memberId: message.sender.memberId }} familyId={family.familyId} size={34} /> : null}
                     <View style={[styles.messageCluster, { maxWidth: isDesktop ? 620 : '84%' }, isMine && styles.myMessageCluster]}>
                       {!isMine ? (
                         <View style={styles.senderLine}>

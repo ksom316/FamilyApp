@@ -7,6 +7,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -24,14 +25,42 @@ const timestamps = {
 
 export const familyRole = pgEnum('family_role', ['owner', 'guardian', 'member']);
 
-export const users = pgTable('users', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  name: text('display_name').notNull(),
-  email: text('email').notNull().unique(),
-  emailVerified: boolean('email_verified').notNull().default(false),
-  image: text('avatar_url'),
-  ...timestamps
-});
+// The small, fixed set of FamilyApp Avatar customization choices — deliberately limited
+// (a handful of options per category, not hundreds of Bitmoji-style combinations). Every
+// value here is a plain string enum stored as JSON, never a generated image.
+export type AvatarConfig = {
+  skinTone: 'light' | 'medium' | 'tan' | 'deep';
+  hairstyle: 'bald' | 'short' | 'curly' | 'long' | 'bun';
+  hairColor: 'black' | 'brown' | 'blonde' | 'red' | 'gray';
+  expression: 'smile' | 'neutral' | 'grin' | 'wink';
+  accessory: 'none' | 'glasses' | 'sunglasses';
+  top: 'tshirt' | 'hoodie' | 'dress' | 'buttonup';
+  background: 'peach' | 'sky' | 'mint' | 'lilac' | 'sun';
+};
+
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('display_name').notNull(),
+    email: text('email').notNull().unique(),
+    emailVerified: boolean('email_verified').notNull().default(false),
+    image: text('avatar_url'),
+    // Profile identity: which of photo / FamilyApp Avatar / initials is currently active.
+    // 'initials' is also the default/back-compat state — existing users keep seeing their
+    // provider avatar_url (if any) or initials exactly as before until they opt in.
+    identityType: text('identity_type').notNull().default('initials'),
+    avatarConfig: jsonb('avatar_config').$type<AvatarConfig>(),
+    photoObjectKey: text('photo_object_key'),
+    photoMimeType: text('photo_mime_type'),
+    ...timestamps
+  },
+  (table) => [
+    check('users_identity_type_allowed', sql`${table.identityType} in ('photo', 'avatar', 'initials')`),
+    check('users_photo_requires_key', sql`${table.identityType} <> 'photo' or ${table.photoObjectKey} is not null`),
+    check('users_avatar_requires_config', sql`${table.identityType} <> 'avatar' or ${table.avatarConfig} is not null`)
+  ]
+);
 
 export const authSessions = pgTable(
   'sessions',

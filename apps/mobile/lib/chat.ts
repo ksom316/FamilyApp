@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 
 export const MAX_MESSAGE_LENGTH = 2000;
 
@@ -6,6 +7,9 @@ export type ChatSender = {
   memberId: string;
   displayName: string;
   avatar: string | null;
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
   role: 'owner' | 'guardian' | 'member';
 };
 

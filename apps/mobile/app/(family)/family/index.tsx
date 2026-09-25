@@ -4,9 +4,9 @@ import { router } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Screen } from '../../../components/Screen';
 import { TextField } from '../../../components/TextField';
 import { useCurrentFamily } from '../../../lib/family-context';
@@ -59,7 +59,7 @@ export default function FamilyScreen() {
 
       {error ? <Card style={styles.stateCard}><AppText variant="body" tone="danger">{error}</AppText><Button label="Try again" onPress={() => void loadMembers()} style={styles.retry} variant="secondary" /></Card> : null}
       {!members && !error ? <View style={styles.loading}><ActivityIndicator color={theme.primary} /><AppText variant="caption" tone="mutedText" style={styles.loadingText}>Gathering your people…</AppText></View> : null}
-      {members ? <View style={styles.list}>{members.map((member) => <MemberCard key={member.id} member={member} />)}</View> : null}
+      {members ? <View style={styles.list}>{members.map((member) => <MemberCard key={member.id} member={member} familyId={family.familyId} />)}</View> : null}
 
       <View style={styles.sectionHeading}>
         <View style={styles.headingCopy}>
@@ -110,7 +110,7 @@ export default function FamilyScreen() {
   );
 }
 
-function MemberCard({ member }: { member: FamilyMember }) {
+function MemberCard({ member, familyId }: { member: FamilyMember; familyId: string }) {
   const scheme = useColorScheme();
   const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
   const roleLabel = member.role === 'owner' ? 'Family creator' : member.role === 'guardian' ? 'Guardian' : 'Family member';
@@ -120,7 +120,7 @@ function MemberCard({ member }: { member: FamilyMember }) {
 
   return (
     <Card style={styles.memberCard}>
-      <Avatar name={member.displayName} imageUrl={member.avatar} size={56} />
+      <MemberAvatar member={{ ...member, memberId: member.id }} familyId={familyId} size={56} />
       <View style={styles.memberCopy}><AppText variant="label">{member.displayName}</AppText><AppText variant="caption" tone="mutedText" style={styles.joined}>With your family since {joined}</AppText></View>
       <View style={[styles.roleBadge, { backgroundColor: roleColor }]}><AppText variant="caption" tone={roleTone}>{roleLabel}</AppText></View>
     </Card>

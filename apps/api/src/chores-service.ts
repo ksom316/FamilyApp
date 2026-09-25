@@ -148,7 +148,10 @@ const choreBaseSelection = {
   createdBy: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   }
 };
 
@@ -351,6 +354,9 @@ const assigneeSelection = {
   memberId: familyMembers.id,
   displayName: users.name,
   avatar: users.image,
+  identityType: users.identityType,
+  avatarConfig: users.avatarConfig,
+  hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`,
   completedAt: familyChoreAssignments.completedAt
 };
 
