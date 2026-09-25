@@ -3,3 +3,11 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require
 BETTER_AUTH_SECRET=replace-with-a-long-random-secret
 APP_URL=http://localhost:8787
 AUTH_TRUSTED_ORIGINS=http://localhost:8081,http://localhost:19006,http://localhost:3000,familyapp://
+
+# Family Brain AI provider (OpenRouter). Optional: if OPENROUTER_API_KEY is unset,
+# Family Brain returns a graceful "AI is not configured" response instead of erroring.
+# Get a key at https://openrouter.ai/keys — never set this in an EXPO_PUBLIC_* variable.
+OPENROUTER_API_KEY=
+# Optional. Defaults to a free-tier development model if unset — see
+# apps/api/src/ai-provider.ts for the current default and its caveats.
+OPENROUTER_MODEL=

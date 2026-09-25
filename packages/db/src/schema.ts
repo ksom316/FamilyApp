@@ -3,6 +3,7 @@ import {
   check,
   boolean,
   date,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -338,5 +339,154 @@ export const familyMemoryFavorites = pgTable(
     }).onDelete('cascade'),
     uniqueIndex('family_memory_favorites_memory_member_unique').on(table.memoryId, table.memberId),
     index('family_memory_favorites_member_idx').on(table.memberId)
+  ]
+);
+
+export const familyTimeCapsules = pgTable(
+  'family_time_capsules',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    title: text('title').notNull(),
+    message: text('message'),
+    unlockAt: timestamp('unlock_at', { withTimezone: true }).notNull(),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_time_capsules_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    unique('family_time_capsules_id_family_unique').on(table.id, table.familyId),
+    index('family_time_capsules_family_unlock_at_idx').on(table.familyId, table.unlockAt),
+    index('family_time_capsules_creator_idx').on(table.createdByMemberId),
+    check(
+      'family_time_capsules_title_length',
+      sql`char_length(${table.title}) between 1 and 120 and ${table.title} = btrim(${table.title})`
+    ),
+    check(
+      'family_time_capsules_message_length',
+      sql`${table.message} is null or (char_length(${table.message}) between 1 and 5000 and ${table.message} = btrim(${table.message}))`
+    ),
+    check('family_time_capsules_unlock_after_creation', sql`${table.unlockAt} > ${table.createdAt}`)
+  ]
+);
+
+export const familyTimeCapsuleMemories = pgTable(
+  'family_time_capsule_memories',
+  {
+    familyId: uuid('family_id').notNull(),
+    capsuleId: uuid('capsule_id').notNull(),
+    memoryId: uuid('memory_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_time_capsule_memories_capsule_family_fk',
+      columns: [table.capsuleId, table.familyId],
+      foreignColumns: [familyTimeCapsules.id, familyTimeCapsules.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_time_capsule_memories_memory_family_fk',
+      columns: [table.memoryId, table.familyId],
+      foreignColumns: [familyMemories.id, familyMemories.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_time_capsule_memories_capsule_memory_unique').on(table.capsuleId, table.memoryId),
+    index('family_time_capsule_memories_memory_idx').on(table.memoryId)
+  ]
+);
+
+// Live location sharing: exactly one row per member, upserted on every start/refresh.
+// There is intentionally no history table — stopping or expiring a share simply makes
+// it invisible to normal queries; nothing beyond the current fix is ever retained.
+export const familyLocationShares = pgTable(
+  'family_location_shares',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    memberId: uuid('member_id').notNull(),
+    // Nullable: coordinates are cleared (not merely hidden) the moment a share is
+    // stopped, expires, or is lazily swept up as stale — see the location service for
+    // where each of those clears happens. A null lat/lng always means "no current
+    // precise location retained for this member," never "sharing, location unknown."
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
+    accuracyMeters: doublePrecision('accuracy_meters'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    stoppedAt: timestamp('stopped_at', { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_location_shares_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    unique('family_location_shares_member_unique').on(table.memberId),
+    index('family_location_shares_family_active_idx').on(table.familyId, table.stoppedAt, table.expiresAt),
+    index('family_location_shares_expires_at_idx').on(table.expiresAt),
+    check(
+      'family_location_shares_latitude_range',
+      sql`${table.latitude} is null or ${table.latitude} between -90 and 90`
+    ),
+    check(
+      'family_location_shares_longitude_range',
+      sql`${table.longitude} is null or ${table.longitude} between -180 and 180`
+    ),
+    check(
+      'family_location_shares_coords_consistency',
+      sql`(${table.latitude} is null) = (${table.longitude} is null)`
+    ),
+    check(
+      'family_location_shares_accuracy_range',
+      sql`${table.accuracyMeters} is null or ${table.accuracyMeters} between 0 and 50000`
+    )
+  ]
+);
+
+export const findMeResponse = pgEnum('find_me_response', ['coming', 'dismissed']);
+
+// One outstanding outgoing request per requester, upserted the same way as location
+// shares. The requester is always the person being located; recipients never initiate
+// tracking of someone else.
+export const familyFindMeRequests = pgTable(
+  'family_find_me_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    requesterMemberId: uuid('requester_member_id').notNull(),
+    recipientMemberId: uuid('recipient_member_id').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    response: findMeResponse('response'),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_find_me_requester_family_fk',
+      columns: [table.requesterMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_find_me_recipient_family_fk',
+      columns: [table.recipientMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    unique('family_find_me_requester_unique').on(table.requesterMemberId),
+    index('family_find_me_recipient_idx').on(table.recipientMemberId),
+    index('family_find_me_expires_at_idx').on(table.expiresAt),
+    check('family_find_me_not_self', sql`${table.requesterMemberId} <> ${table.recipientMemberId}`),
+    check(
+      'family_find_me_response_consistency',
+      sql`(${table.response} is null) = (${table.respondedAt} is null)`
+    )
   ]
 );

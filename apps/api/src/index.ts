@@ -2,9 +2,23 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { createDatabase } from '@familyapp/db';
 
+import { createAiProvider } from './ai-provider';
 import { createAuth, getTrustedOrigins } from './auth';
+import { BrainServiceError, respondToBrainMessage } from './brain-service';
 import { ChatServiceError, createFamilyMessage, listFamilyMessages } from './chat-service';
 import { acceptFamilyInvitation, createFamily, createFamilyInvitation, FamilyServiceError, listFamilyMembers, listFamilyMemberships } from './family-service';
+import {
+  cancelOutgoingFindMeRequest,
+  createFindMeRequest,
+  getOutgoingFindMeRequest,
+  listActiveShares,
+  listIncomingFindMeRequests,
+  LocationServiceError,
+  respondToFindMeRequest,
+  startShare,
+  stopShare,
+  updateShare
+} from './location-service';
 import {
   createMemory,
   deleteMemory,
@@ -18,6 +32,14 @@ import {
 } from './memories-service';
 import { createEvent, createTask, deleteEvent, deleteTask, listPlans, PlanServiceError, setTaskCompletion, updateEvent, updateTask } from './plans-service';
 import { sessionMiddleware, type ApiEnv } from './session-middleware';
+import {
+  createTimeCapsule,
+  deleteTimeCapsule,
+  getTimeCapsule,
+  listTimeCapsules,
+  TimeCapsuleServiceError,
+  updateTimeCapsule
+} from './time-capsules-service';
 
 const app = new Hono<ApiEnv>();
 
@@ -333,6 +355,222 @@ app.delete('/families/:familyId/memories/:memoryId/favorite', sessionMiddleware,
     return c.body(null, 204);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof MemoriesServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 413 | 415 | 502 | 503);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/time-capsules', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    return c.json(await listTimeCapsules(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId')));
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/time-capsules/:capsuleId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    return c.json(await getTimeCapsule(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      c.req.param('capsuleId')
+    ));
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    }
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/time-capsules', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    return c.json(await createTimeCapsule(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      await c.req.json()
+    ), 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    }
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/time-capsules/:capsuleId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    return c.json(await updateTimeCapsule(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      c.req.param('capsuleId'),
+      await c.req.json()
+    ));
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    }
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/time-capsules/:capsuleId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await deleteTimeCapsule(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      c.req.param('capsuleId')
+    );
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/location/shares', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const shares = await listActiveShares(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json({ shares });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/location/shares/me/start', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const share = await startShare(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ share });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/location/shares/me', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const share = await updateShare(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ share });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/location/shares/me/stop', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await stopShare(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/find-me', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const request = await createFindMeRequest(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ request }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/find-me/incoming', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const requests = await listIncomingFindMeRequests(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json({ requests });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/find-me/outgoing', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const request = await getOutgoingFindMeRequest(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json({ request });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/find-me/:requestId/respond', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ response?: unknown }>();
+    await respondToFindMeRequest(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('requestId'), body.response);
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/find-me/me', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await cancelOutgoingFindMeRequest(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/brain', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const provider = createAiProvider({ apiKey: c.env.OPENROUTER_API_KEY, model: c.env.OPENROUTER_MODEL });
+    const result = await respondToBrainMessage(
+      createDatabase(c.env.DATABASE_URL),
+      provider,
+      session.user.id,
+      session.user.name,
+      c.req.param('familyId'),
+      await c.req.json()
+    );
+    return c.json(result);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof BrainServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 502 | 503);
     throw error;
   }
 });

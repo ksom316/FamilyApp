@@ -10,8 +10,10 @@ import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyMembers } from '../../lib/families';
+import { getFamilyLocationShares, getIncomingFindMeRequests, type FamilyLocationShare, type IncomingFindMeRequest } from '../../lib/location';
 import { getFamilyMemories, type FamilyMemory } from '../../lib/memories';
 import { getFamilyPlans, type FamilyPlans } from '../../lib/plans';
+import { getFamilyTimeCapsules, type TimeCapsuleSummary } from '../../lib/time-capsules';
 import { useAuth } from '../../lib/use-auth';
 
 function greetingForHour(hour: number) {
@@ -32,12 +34,19 @@ export default function FamilyHomeScreen() {
   const [plansFailed, setPlansFailed] = useState(false);
   const [memories, setMemories] = useState<FamilyMemory[] | null>(null);
   const [memoriesFailed, setMemoriesFailed] = useState(false);
+  const [locationShares, setLocationShares] = useState<FamilyLocationShare[] | null>(null);
+  const [incomingFindMe, setIncomingFindMe] = useState<IncomingFindMeRequest[] | null>(null);
+  const [locationFailed, setLocationFailed] = useState(false);
+  const [timeCapsules, setTimeCapsules] = useState<TimeCapsuleSummary[] | null>(null);
+  const [timeCapsulesFailed, setTimeCapsulesFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
     setMemberCountFailed(false);
     setPlansFailed(false);
     setMemoriesFailed(false);
+    setLocationFailed(false);
+    setTimeCapsulesFailed(false);
     void getFamilyMembers(family.familyId).then((members) => {
       if (active) setMemberCount(members.length);
     }).catch(() => {
@@ -53,6 +62,16 @@ export default function FamilyHomeScreen() {
     }).catch(() => {
       if (active) setMemoriesFailed(true);
     });
+    void Promise.all([getFamilyLocationShares(family.familyId), getIncomingFindMeRequests(family.familyId)]).then(([shares, requests]) => {
+      if (active) { setLocationShares(shares); setIncomingFindMe(requests); }
+    }).catch(() => {
+      if (active) setLocationFailed(true);
+    });
+    void getFamilyTimeCapsules(family.familyId).then((result) => {
+      if (active) setTimeCapsules(result.capsules);
+    }).catch(() => {
+      if (active) setTimeCapsulesFailed(true);
+    });
     return () => { active = false; };
   }, [family.familyId]);
 
@@ -63,6 +82,10 @@ export default function FamilyHomeScreen() {
   const contentWidth = Math.min(1080, shellWidth - horizontalPadding);
   const isWideHero = contentWidth >= 720;
   const isCompact = contentWidth < 620;
+  const amISharing = locationShares?.some((share) => share.memberId === family.id) ?? false;
+  const incomingFindMeCount = incomingFindMe?.length ?? 0;
+  const lockedCapsules = timeCapsules?.filter((capsule) => capsule.isLocked) ?? [];
+  const nextCapsule = lockedCapsules[0];
   const pendingTasks = plans?.tasks.filter((task) => !task.completedAt) ?? [];
   const upcomingPlans = plans ? [
     ...plans.events.map((event) => ({ id: `event-${event.id}`, title: event.title, at: event.startsAt, kind: 'Event' })),
@@ -117,7 +140,22 @@ export default function FamilyHomeScreen() {
             : <AppText variant="caption" tone="mutedText" style={styles.actionComing}>Ask a guardian to invite</AppText>}
         </Card>
         <PlanActionCard title="Add an event" detail="Plan family moments" mark="◷" color={theme.secondarySoft} textColor={theme.secondary} onPress={() => router.push('/(family)/plans' as never)} />
-        <ComingSoonCard title="Share location" detail="Only when you choose" mark="⌖" color={theme.accentSoft} textColor={theme.warning} />
+        <Card style={styles.actionCard}>
+          <View style={[styles.actionMark, { backgroundColor: incomingFindMeCount > 0 ? theme.primarySoft : theme.accentSoft }]}>
+            <AppText variant="heading" style={{ color: incomingFindMeCount > 0 ? theme.primary : theme.warning }}>◎</AppText>
+          </View>
+          <AppText variant="label" style={styles.actionTitle}>Location</AppText>
+          <AppText variant="caption" tone="mutedText">
+            {incomingFindMeCount > 0
+              ? `${incomingFindMeCount} family member${incomingFindMeCount === 1 ? '' : 's'} want you to come find them`
+              : amISharing
+                ? 'You’re sharing your location'
+                : locationFailed
+                  ? 'Unavailable right now'
+                  : 'Only when you choose'}
+          </AppText>
+          <Button label="Open Location" variant="quiet" onPress={() => router.push('/(family)/location' as never)} style={styles.actionButton} />
+        </Card>
         <PlanActionCard title="Add a task" detail="Keep home in sync" mark="✓" color={theme.successSoft} textColor={theme.success} onPress={() => router.push('/(family)/plans' as never)} />
         <Card style={styles.actionCard}>
           <View style={[styles.actionMark, { backgroundColor: theme.primarySoft }]}><AppText variant="heading" tone="primary">✳</AppText></View>
@@ -125,13 +163,29 @@ export default function FamilyHomeScreen() {
           <AppText variant="caption" tone="mutedText">{memories ? (memories.length ? `${memories.length} moments saved` : 'Start your first memory') : memoriesFailed ? 'Unavailable right now' : 'Loading memories'}</AppText>
           <Button label="Open Memories" variant="quiet" onPress={() => router.push('/(family)/memories' as never)} style={styles.actionButton} />
         </Card>
+        <Card style={styles.actionCard}>
+          <View style={[styles.actionMark, { backgroundColor: theme.secondarySoft }]}><AppText variant="heading" tone="secondary">⌛</AppText></View>
+          <AppText variant="label" style={styles.actionTitle}>Time Capsules</AppText>
+          <AppText variant="caption" tone="mutedText">
+            {timeCapsules
+              ? nextCapsule
+                ? `${lockedCapsules.length} sealed · Next ${new Date(nextCapsule.unlockAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                : timeCapsules.length
+                  ? 'All capsules are ready to open'
+                  : 'Seal something for the future'
+              : timeCapsulesFailed
+                ? 'Unavailable right now'
+                : 'Loading capsules'}
+          </AppText>
+          <Button label="Open Time Capsules" variant="quiet" onPress={() => router.push('/(family)/capsules' as never)} style={styles.actionButton} />
+        </Card>
       </View>
 
       <Card style={[styles.brainCard, { backgroundColor: theme.backgroundTint }]}>
         <View style={styles.brainTop}><View style={[styles.brainMark, { backgroundColor: theme.accentSoft }]}><AppText variant="heading" style={{ color: theme.warning }}>✦</AppText></View><AppText variant="eyebrow" tone="secondary">A thought partner for your family</AppText></View>
         <AppText variant="title" style={styles.brainTitle}>What can I help your family with today?</AppText>
-        <AppText variant="body" tone="mutedText">Family Brain is finding its way here. A thoughtful helper for the everyday things that bring you together.</AppText>
-        <AppText variant="caption" tone="secondary" style={styles.comingSoon}>Coming in a future update</AppText>
+        <AppText variant="body" tone="mutedText">Ask about your plans, tasks, and recent memories, or get ideas for a family activity.</AppText>
+        <Button label="Ask Family Brain" variant="secondary" onPress={() => router.push('/(family)/brain' as never)} style={styles.brainAction} />
       </Card>
 
       <View style={[styles.lowerGrid, isWideHero && styles.lowerGridWide]}>
@@ -146,10 +200,6 @@ export default function FamilyHomeScreen() {
       </View>
     </Screen>
   );
-}
-
-function ComingSoonCard({ title, detail, mark, color, textColor }: { title: string; detail: string; mark: string; color: string; textColor: string }) {
-  return <Card style={styles.actionCard}><View style={[styles.actionMark, { backgroundColor: color }]}><AppText variant="heading" style={{ color: textColor }}>{mark}</AppText></View><AppText variant="label" style={styles.actionTitle}>{title}</AppText><AppText variant="caption" tone="mutedText">{detail}</AppText><AppText variant="caption" tone="mutedText" style={styles.actionComing}>Coming soon</AppText></Card>;
 }
 
 function PlanActionCard({ title, detail, mark, color, textColor, onPress }: { title: string; detail: string; mark: string; color: string; textColor: string; onPress: () => void }) {
@@ -185,7 +235,7 @@ const styles = StyleSheet.create({
   brainTop: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   brainMark: { alignItems: 'center', borderRadius: radius.md, height: 42, justifyContent: 'center', width: 42 },
   brainTitle: { marginBottom: spacing.sm, marginTop: spacing.lg, maxWidth: 680 },
-  comingSoon: { marginTop: spacing.md },
+  brainAction: { alignSelf: 'flex-start', marginTop: spacing.lg },
   lowerGrid: { gap: spacing.md, marginTop: spacing.lg },
   lowerGridWide: { flexDirection: 'row' },
   lowerCard: { flex: 1, minHeight: 230 },

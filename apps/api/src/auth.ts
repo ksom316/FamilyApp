@@ -11,6 +11,8 @@ export type AuthBindings = {
   APP_URL: string;
   AUTH_TRUSTED_ORIGINS?: string;
   MEMORIES_BUCKET?: R2Bucket;
+  OPENROUTER_API_KEY?: string;
+  OPENROUTER_MODEL?: string;
 };
 
 export function getTrustedOrigins(env: AuthBindings) {
