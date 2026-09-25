@@ -727,3 +727,93 @@ export const familyPollVotes = pgTable(
     index('family_poll_votes_option_idx').on(table.optionId)
   ]
 );
+
+// Shopping lists target either the whole family (householdId null) or one existing
+// subgroup (householdId set, FK-checked to belong to the same family) — same targeting
+// shape as polls. Completion is a manual, one-way flag (completedAt), never derived from
+// shoppingDate — a list doesn't auto-complete just because its shopping date has passed.
+export const familyShoppingLists = pgTable(
+  'family_shopping_lists',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    householdId: uuid('household_id'),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    shoppingDate: timestamp('shopping_date', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_shopping_lists_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'family_shopping_lists_household_family_fk',
+      columns: [table.householdId, table.familyId],
+      foreignColumns: [households.id, households.familyId]
+    }).onDelete('cascade'),
+    unique('family_shopping_lists_id_family_unique').on(table.id, table.familyId),
+    index('family_shopping_lists_family_created_at_idx').on(table.familyId, table.createdAt),
+    index('family_shopping_lists_household_idx').on(table.householdId),
+    index('family_shopping_lists_family_completed_idx').on(table.familyId, table.completedAt),
+    index('family_shopping_lists_creator_idx').on(table.createdByMemberId),
+    check(
+      'family_shopping_lists_name_length',
+      sql`char_length(${table.name}) between 1 and 100 and ${table.name} = btrim(${table.name})`
+    ),
+    check(
+      'family_shopping_lists_description_length',
+      sql`${table.description} is null or (char_length(${table.description}) between 1 and 1000 and ${table.description} = btrim(${table.description}))`
+    )
+  ]
+);
+
+export const familyShoppingItems = pgTable(
+  'family_shopping_items',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    listId: uuid('list_id').notNull(),
+    name: text('name').notNull(),
+    quantity: doublePrecision('quantity'),
+    unit: text('unit'),
+    note: text('note'),
+    purchasedAt: timestamp('purchased_at', { withTimezone: true }),
+    addedByMemberId: uuid('added_by_member_id').notNull(),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_shopping_items_list_family_fk',
+      columns: [table.listId, table.familyId],
+      foreignColumns: [familyShoppingLists.id, familyShoppingLists.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_shopping_items_added_by_family_fk',
+      columns: [table.addedByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    index('family_shopping_items_list_idx').on(table.listId),
+    index('family_shopping_items_list_purchased_idx').on(table.listId, table.purchasedAt),
+    index('family_shopping_items_added_by_idx').on(table.addedByMemberId),
+    check(
+      'family_shopping_items_name_length',
+      sql`char_length(${table.name}) between 1 and 140 and ${table.name} = btrim(${table.name})`
+    ),
+    check(
+      'family_shopping_items_unit_length',
+      sql`${table.unit} is null or (char_length(${table.unit}) between 1 and 30 and ${table.unit} = btrim(${table.unit}))`
+    ),
+    check(
+      'family_shopping_items_note_length',
+      sql`${table.note} is null or (char_length(${table.note}) between 1 and 300 and ${table.note} = btrim(${table.note}))`
+    ),
+    check('family_shopping_items_quantity_positive', sql`${table.quantity} is null or ${table.quantity} > 0`)
+  ]
+);

@@ -10,6 +10,7 @@ const destinations = [
   { route: 'chat', title: 'Family chat', detail: 'Little notes and conversations' },
   { route: 'memories', title: 'Memories', detail: 'Moments worth keeping' },
   { route: 'polls', title: 'Polls', detail: 'Decide things together' },
+  { route: 'shopping', title: 'Shopping', detail: 'Collaborative family shopping lists' },
   { route: 'capsules', title: 'Time Capsules', detail: 'Messages and memories sealed for the future' },
   { route: 'location', title: 'Location', detail: 'Share where you are, only when you choose' },
   { route: 'brain', title: 'Family Brain', detail: 'A thoughtful family helper' }

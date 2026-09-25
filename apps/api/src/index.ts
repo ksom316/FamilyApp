@@ -60,6 +60,20 @@ import {
 } from './private-chat-service';
 import { sessionMiddleware, type ApiEnv } from './session-middleware';
 import {
+  addShoppingItem,
+  clearPurchasedItems,
+  completeShoppingList,
+  createShoppingList,
+  deleteShoppingItem,
+  deleteShoppingList,
+  getShoppingList,
+  listShoppingLists,
+  setShoppingItemPurchased,
+  ShoppingServiceError,
+  updateShoppingItem,
+  updateShoppingList
+} from './shopping-service';
+import {
   createTimeCapsule,
   deleteTimeCapsule,
   getTimeCapsule,
@@ -330,6 +344,139 @@ app.post('/families/:familyId/polls/:pollId/close', sessionMiddleware, async (c)
     return c.json({ poll });
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof PollServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/shopping-lists', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const lists = await listShoppingLists(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json({ lists });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/shopping-lists/:listId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const list = await getShoppingList(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('listId'));
+    return c.json({ list });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/shopping-lists', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const list = await createShoppingList(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ list }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/shopping-lists/:listId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const list = await updateShoppingList(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('listId'), await c.req.json());
+    return c.json({ list });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/shopping-lists/:listId/complete', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const list = await completeShoppingList(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('listId'));
+    return c.json({ list });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/shopping-lists/:listId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await deleteShoppingList(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('listId'));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/shopping-lists/:listId/items', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const list = await addShoppingItem(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('listId'), await c.req.json());
+    return c.json({ list }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/shopping-lists/:listId/items/:itemId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const list = await updateShoppingItem(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('listId'), c.req.param('itemId'), await c.req.json());
+    return c.json({ list });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/shopping-lists/:listId/items/:itemId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const list = await deleteShoppingItem(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('listId'), c.req.param('itemId'));
+    return c.json({ list });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/shopping-lists/:listId/items/:itemId/purchased', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ purchased?: unknown }>();
+    const list = await setShoppingItemPurchased(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('listId'), c.req.param('itemId'), body.purchased);
+    return c.json({ list });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/shopping-lists/:listId/items/clear-purchased', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const list = await clearPurchasedItems(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('listId'));
+    return c.json({ list });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ShoppingServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
     throw error;
   }
 });

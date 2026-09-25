@@ -17,6 +17,7 @@ const navItems = [
   { name: 'plans', label: 'Plans', mark: '▤' },
   { name: 'memories', label: 'Memories', mark: '✳' },
   { name: 'polls', label: 'Polls', mark: '☑' },
+  { name: 'shopping', label: 'Shopping', mark: '▣' },
   { name: 'capsules', label: 'Time Capsules', mark: '⌛' },
   { name: 'location', label: 'Location', mark: '◎' },
   { name: 'brain', label: 'Family Brain', mark: '✦' }
@@ -85,7 +86,7 @@ export function MobileFamilyNavigation() {
   return (
     <View style={[styles.bottomNav, { backgroundColor: theme.surface, borderColor: theme.border, paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       {items.map((item) => {
-        const active = pathname.endsWith(`/${item.name}`) || (item.name === 'more' && ['chat', 'private-chat', 'memories', 'polls', 'capsules', 'location', 'brain', 'invite'].some((route) => pathname.split('/').includes(route)));
+        const active = pathname.endsWith(`/${item.name}`) || (item.name === 'more' && ['chat', 'private-chat', 'memories', 'polls', 'shopping', 'capsules', 'location', 'brain', 'invite'].some((route) => pathname.split('/').includes(route)));
         return (
           <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={item.label} onPress={() => router.navigate(`/(family)/${item.name}` as never)} style={[styles.bottomItem, active && { backgroundColor: theme.primarySoft }]}>
             <AppText variant="body" tone={active ? 'primary' : 'mutedText'}>{item.mark}</AppText>
