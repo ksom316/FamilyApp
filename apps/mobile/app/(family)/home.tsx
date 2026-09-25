@@ -8,6 +8,7 @@ import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
+import { getFamilyCheckIns, postCheckIn, type FamilyCheckIn } from '../../lib/check-ins';
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyMembers } from '../../lib/families';
 import { getFamilyLocationShares, getIncomingFindMeRequests, type FamilyLocationShare, type IncomingFindMeRequest } from '../../lib/location';
@@ -60,6 +61,9 @@ export default function FamilyHomeScreen() {
   const [todayMenu, setTodayMenu] = useState<Menu | null>(null);
   const [menuLoaded, setMenuLoaded] = useState(false);
   const [menuFailed, setMenuFailed] = useState(false);
+  const [myLatestCheckIn, setMyLatestCheckIn] = useState<FamilyCheckIn | null>(null);
+  const [checkInsFailed, setCheckInsFailed] = useState(false);
+  const [checkInSending, setCheckInSending] = useState<'safe' | 'arrived' | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -70,6 +74,7 @@ export default function FamilyHomeScreen() {
     setTimeCapsulesFailed(false);
     setMenuLoaded(false);
     setMenuFailed(false);
+    setCheckInsFailed(false);
     void getFamilyMembers(family.familyId).then((members) => {
       if (active) setMemberCount(members.length);
     }).catch(() => {
@@ -103,8 +108,26 @@ export default function FamilyHomeScreen() {
     }).catch(() => {
       if (active) setMenuFailed(true);
     });
+    void getFamilyCheckIns(family.familyId).then((checkIns) => {
+      if (active) setMyLatestCheckIn(checkIns.find((item) => item.member.memberId === family.id) ?? null);
+    }).catch(() => {
+      if (active) setCheckInsFailed(true);
+    });
     return () => { active = false; };
-  }, [family.familyId]);
+  }, [family.familyId, family.id]);
+
+  async function sendQuickCheckIn(status: 'safe' | 'arrived') {
+    setCheckInSending(status);
+    try {
+      const checkIn = await postCheckIn(family.familyId, { status });
+      setMyLatestCheckIn(checkIn);
+    } catch (err) {
+      // Silently ignored here — the full Check-ins screen surfaces errors; this is a quick action.
+      void err;
+    } finally {
+      setCheckInSending(null);
+    }
+  }
 
   const name = session?.user.name?.trim() || 'there';
   const firstName = name.split(/\s+/)[0];
@@ -225,6 +248,22 @@ export default function FamilyHomeScreen() {
         <Button label="Ask Family Brain" variant="secondary" onPress={() => router.push('/(family)/brain' as never)} style={styles.brainAction} />
       </Card>
 
+      <Card style={[styles.menuCard, { backgroundColor: theme.successSoft }]}>
+        <AppText variant="eyebrow" tone="success">Safety check-in</AppText>
+        <AppText variant="body" tone="mutedText" style={styles.checkInSubtitle}>
+          {myLatestCheckIn
+            ? `Last: ${myLatestCheckIn.status === 'safe' ? 'Safe' : 'Arrived'} · ${new Date(myLatestCheckIn.createdAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
+            : checkInsFailed
+              ? 'Unavailable right now'
+              : 'Let your family know you’re okay'}
+        </AppText>
+        <View style={styles.checkInActions}>
+          <Button label="✓ I'm safe" variant="secondary" loading={checkInSending === 'safe'} onPress={() => void sendQuickCheckIn('safe')} style={styles.checkInButton} />
+          <Button label="🏠 I've arrived" variant="secondary" loading={checkInSending === 'arrived'} onPress={() => void sendQuickCheckIn('arrived')} style={styles.checkInButton} />
+        </View>
+        <Button label="Open Check-ins" variant="quiet" onPress={() => router.push('/(family)/check-ins' as never)} style={styles.actionButton} />
+      </Card>
+
       <Card style={[styles.menuCard, { backgroundColor: theme.accentSoft }]}>
         <AppText variant="eyebrow" style={{ color: theme.warning }}>Today’s menu</AppText>
         {todayMeals ? (
@@ -290,6 +329,9 @@ const styles = StyleSheet.create({
   brainTitle: { marginBottom: spacing.sm, marginTop: spacing.lg, maxWidth: 680 },
   brainAction: { alignSelf: 'flex-start', marginTop: spacing.lg },
   menuCard: { marginTop: spacing.lg, padding: spacing.xl },
+  checkInSubtitle: { marginTop: spacing.sm },
+  checkInActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.lg },
+  checkInButton: { flexGrow: 1 },
   menuMeals: { gap: spacing.sm, marginTop: spacing.md },
   menuMealRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
   menuEmptyText: { marginTop: spacing.md },

@@ -13,6 +13,7 @@ import {
   listCalendarEvents,
   updateCalendarEvent
 } from './calendar-service';
+import { CheckInServiceError, createCheckIn, listRecentCheckIns } from './check-ins-service';
 import { ChatServiceError, createFamilyMessage, listFamilyMessages } from './chat-service';
 import { acceptFamilyInvitation, createFamily, createFamilyInvitation, FamilyServiceError, listFamilyMembers, listFamilyMemberships } from './family-service';
 import {
@@ -1437,6 +1438,30 @@ app.delete('/families/:familyId/find-me/me', sessionMiddleware, async (c) => {
     return c.body(null, 204);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof LocationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/check-ins', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const checkIns = await listRecentCheckIns(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json({ checkIns });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof CheckInServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/check-ins', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const checkIn = await createCheckIn(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ checkIn }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof CheckInServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
     throw error;
   }
 });

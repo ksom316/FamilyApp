@@ -15,6 +15,7 @@ const destinations = [
   { route: 'menu', title: 'Menu', detail: 'What’s for breakfast, lunch, and dinner' },
   { route: 'capsules', title: 'Time Capsules', detail: 'Messages and memories sealed for the future' },
   { route: 'location', title: 'Location', detail: 'Share where you are, only when you choose' },
+  { route: 'check-ins', title: 'Check-ins', detail: 'Let your family know you’re okay' },
   { route: 'brain', title: 'Family Brain', detail: 'A thoughtful family helper' }
 ];
 

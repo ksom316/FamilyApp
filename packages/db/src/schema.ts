@@ -1102,3 +1102,33 @@ export const familySavedMenuMeals = pgTable(
     )
   ]
 );
+
+// Voluntary, member-posted safety check-ins — never location, never automatic. A
+// member's "current status" is simply their newest row here; there is no separate
+// latest-status table to keep in sync.
+export const familyCheckIns = pgTable(
+  'family_check_ins',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    memberId: uuid('member_id').notNull(),
+    status: text('status').notNull(),
+    message: text('message'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_check_ins_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    index('family_check_ins_family_created_idx').on(table.familyId, table.createdAt),
+    check('family_check_ins_status_allowed', sql`${table.status} in ('safe', 'arrived')`),
+    check(
+      'family_check_ins_message_length',
+      sql`${table.message} is null or (char_length(${table.message}) between 1 and 200 and ${table.message} = btrim(${table.message}))`
+    )
+  ]
+);
