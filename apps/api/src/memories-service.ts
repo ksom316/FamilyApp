@@ -50,7 +50,7 @@ function readMemoryDate(value: unknown) {
   return value;
 }
 
-function sniffImageMimeType(bytes: Uint8Array): 'image/jpeg' | 'image/png' | 'image/webp' | null {
+export function sniffImageMimeType(bytes: Uint8Array): 'image/jpeg' | 'image/png' | 'image/webp' | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
   if (
     bytes.length >= 8 &&

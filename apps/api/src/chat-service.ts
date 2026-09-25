@@ -17,7 +17,7 @@ export class ChatServiceError extends Error {
   }
 }
 
-function readMessageText(value: unknown) {
+export function readMessageText(value: unknown) {
   if (typeof value !== 'string') {
     throw new ChatServiceError('invalid_message', 'Message text is required.');
   }

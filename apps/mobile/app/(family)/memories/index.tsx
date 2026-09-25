@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
@@ -9,11 +8,10 @@ import { AuthorizedImage } from '../../../components/AuthorizedImage';
 import { Avatar } from '../../../components/Avatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { MemoryEditor } from '../../../components/MemoryEditor';
 import { Screen } from '../../../components/Screen';
-import { TextField } from '../../../components/TextField';
 import { useCurrentFamily } from '../../../lib/family-context';
 import {
-  createFamilyMemory,
   favoriteFamilyMemory,
   getFamilyMemories,
   memoryMediaPath,
@@ -21,14 +19,6 @@ import {
   unfavoriteFamilyMemory,
   type FamilyMemory
 } from '../../../lib/memories';
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function todayValue() {
-  const date = new Date();
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
 
 function formatMemoryDate(value: string) {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -105,7 +95,7 @@ export default function MemoriesScreen() {
       </View>
 
       {adding ? (
-        <AddMemoryEditor
+        <MemoryEditor
           familyId={family.familyId}
           onCancel={() => setAdding(false)}
           onSaved={async () => { setAdding(false); await load(); }}
@@ -235,83 +225,12 @@ function MemoryCard({ memory, width, onOpen, onToggleFavorite }: { memory: Famil
   );
 }
 
-function AddMemoryEditor({ familyId, onCancel, onSaved }: { familyId: string; onCancel: () => void; onSaved: (memory: FamilyMemory) => Promise<void> | void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
-  const [photo, setPhoto] = useState<{ uri: string; name: string; type: string } | null>(null);
-  const [title, setTitle] = useState('');
-  const [memoryDate, setMemoryDate] = useState(todayValue());
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const savingRef = useRef(false);
-
-  async function pickPhoto() {
-    setError(null);
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError('Allow photo access to add a memory.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    setPhoto({ uri: asset.uri, name: asset.fileName ?? `memory-${Date.now()}.jpg`, type: asset.mimeType ?? 'image/jpeg' });
-  }
-
-  async function save() {
-    if (savingRef.current) return;
-    if (!photo) { setError('Choose a photo to share.'); return; }
-    if (!DATE_PATTERN.test(memoryDate)) { setError('Use a valid date, like 2026-07-04.'); return; }
-
-    savingRef.current = true;
-    setSaving(true);
-    setError(null);
-    try {
-      const memory = await createFamilyMemory(familyId, { title: title.trim() || undefined, memoryDate, file: photo });
-      await onSaved(memory);
-    } catch (err) {
-      setError(err instanceof MemoriesApiError ? err.message : 'That memory could not be uploaded.');
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Card elevated style={styles.editor}>
-      <AppText variant="heading">Add a memory</AppText>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => void pickPhoto()}
-        style={[styles.pickerButton, { borderColor: theme.borderStrong, backgroundColor: theme.input }]}
-      >
-        {photo
-          ? <Image source={{ uri: photo.uri }} style={styles.previewImage} resizeMode="cover" />
-          : <AppText variant="label" tone="mutedText">Choose a photo</AppText>}
-      </Pressable>
-      {photo ? <Button label="Choose a different photo" variant="quiet" onPress={() => void pickPhoto()} /> : null}
-      <TextField label="Title (optional)" value={title} onChangeText={setTitle} maxLength={120} placeholder="A caption for this moment" />
-      <TextField label="Memory date" value={memoryDate} onChangeText={setMemoryDate} hint="YYYY-MM-DD" autoCapitalize="none" />
-      {error ? <AppText variant="caption" tone="danger" style={styles.formError}>{error}</AppText> : null}
-      <View style={styles.formActions}>
-        <Button label="Cancel" variant="quiet" onPress={onCancel} disabled={saving} />
-        <Button label="Save memory" loading={saving} onPress={() => void save()} />
-      </View>
-    </Card>
-  );
-}
-
 const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl, paddingTop: spacing.xl },
   headingRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg, justifyContent: 'space-between' },
   headingCopy: { flex: 1, minWidth: 260 },
   title: { marginTop: spacing.xs },
   subtitle: { marginTop: spacing.sm },
-  editor: { marginTop: spacing.xl, padding: spacing.xl },
-  pickerButton: { alignItems: 'center', borderRadius: radius.md, borderStyle: 'dashed', borderWidth: 1, height: 180, justifyContent: 'center', marginTop: spacing.md, overflow: 'hidden' },
-  previewImage: { height: '100%', width: '100%' },
-  formActions: { alignItems: 'center', flexDirection: 'row', justifyContent: 'flex-end', marginTop: spacing.lg },
-  formError: { marginTop: spacing.md },
   messageCard: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.lg },
   loading: { alignItems: 'center', paddingVertical: spacing.xxxl },
   loadingText: { marginTop: spacing.md },

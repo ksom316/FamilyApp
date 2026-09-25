@@ -15,6 +15,7 @@ import { getFamilyMemories, memoryMediaPath, type FamilyMemory } from '../../../
 import {
   deleteFamilyTimeCapsule,
   getFamilyTimeCapsule,
+  privateCapsuleAttachmentMediaPath,
   TimeCapsulesApiError,
   type TimeCapsuleDetail
 } from '../../../lib/time-capsules';
@@ -199,6 +200,29 @@ export default function TimeCapsuleDetailScreen() {
               : <AppText variant="body" tone="mutedText" style={styles.message}>This capsule was sealed without a written message.</AppText>}
           </Card>
 
+          {capsule.privateAttachments.length ? (
+            <View style={styles.memoriesSection}>
+              <AppText variant="heading">Private photos</AppText>
+              <AppText variant="caption" tone="mutedText" style={styles.memoriesDetail}>
+                These sealed photos became available when the capsule unlocked. They have not been added to Memories.
+              </AppText>
+              <View style={styles.memoryGrid}>
+                {capsule.privateAttachments.map((attachment, index) => (
+                  <Card key={attachment.id} padded={false} style={[styles.privatePhotoCard, { width: memoryWidth }]}>
+                    <AuthorizedImage
+                      path={privateCapsuleAttachmentMediaPath(attachment.familyId, attachment.capsuleId, attachment.id)}
+                      resizeMode="contain"
+                      style={styles.privatePhoto}
+                    />
+                    <View style={styles.memoryCopy}>
+                      <AppText variant="label">Private photo {index + 1}</AppText>
+                    </View>
+                  </Card>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           <View style={styles.memoriesSection}>
             <AppText variant="heading">Memories inside</AppText>
             <AppText variant="caption" tone="mutedText" style={styles.memoriesDetail}>Open any photo to revisit the full family memory.</AppText>
@@ -259,6 +283,8 @@ const styles = StyleSheet.create({
   memoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.md },
   memoryCard: { overflow: 'hidden' },
   memoryImage: { aspectRatio: 1.25, width: '100%' },
+  privatePhotoCard: { overflow: 'hidden' },
+  privatePhoto: { aspectRatio: 1.25, backgroundColor: '#111111', width: '100%' },
   memoryCopy: { padding: spacing.md },
   memoryMeta: { marginTop: spacing.xs },
   noMemories: { marginTop: spacing.md }

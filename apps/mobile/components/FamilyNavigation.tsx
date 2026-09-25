@@ -36,7 +36,7 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
       </View>
       <View style={styles.sideLinks}>
         {navItems.map((item) => {
-          const active = pathname.split('/').includes(item.name);
+          const active = pathname.split('/').includes(item.name) || (item.name === 'chat' && pathname.split('/').includes('private-chat'));
           return (
             <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => router.navigate(`/(family)/${item.name}` as never)} style={[styles.sideLink, active && { backgroundColor: theme.primarySoft }]}>
               <AppText variant="body" tone={active ? 'primary' : 'mutedText'} style={styles.navMark}>{item.mark}</AppText>
@@ -84,7 +84,7 @@ export function MobileFamilyNavigation() {
   return (
     <View style={[styles.bottomNav, { backgroundColor: theme.surface, borderColor: theme.border, paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       {items.map((item) => {
-        const active = pathname.endsWith(`/${item.name}`) || (item.name === 'more' && ['chat', 'memories', 'capsules', 'location', 'brain', 'invite'].some((route) => pathname.split('/').includes(route)));
+        const active = pathname.endsWith(`/${item.name}`) || (item.name === 'more' && ['chat', 'private-chat', 'memories', 'capsules', 'location', 'brain', 'invite'].some((route) => pathname.split('/').includes(route)));
         return (
           <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={item.label} onPress={() => router.navigate(`/(family)/${item.name}` as never)} style={[styles.bottomItem, active && { backgroundColor: theme.primarySoft }]}>
             <AppText variant="body" tone={active ? 'primary' : 'mutedText'}>{item.mark}</AppText>

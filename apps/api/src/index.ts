@@ -31,17 +31,67 @@ import {
   updateMemory
 } from './memories-service';
 import { createEvent, createTask, deleteEvent, deleteTask, listPlans, PlanServiceError, setTaskCompletion, updateEvent, updateTask } from './plans-service';
+import {
+  createPrivateMessage,
+  listPrivateConversations,
+  listPrivateMessages,
+  markPrivateConversationRead,
+  PrivateChatServiceError,
+  startPrivateConversation
+} from './private-chat-service';
 import { sessionMiddleware, type ApiEnv } from './session-middleware';
 import {
   createTimeCapsule,
   deleteTimeCapsule,
   getTimeCapsule,
+  getTimeCapsuleAttachmentMedia,
   listTimeCapsules,
+  type PrivateCapsulePhotoInput,
   TimeCapsuleServiceError,
   updateTimeCapsule
 } from './time-capsules-service';
 
 const app = new Hono<ApiEnv>();
+
+async function readTimeCapsuleRequest(request: Request, isUpdate: boolean) {
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('multipart/form-data')) {
+    return {
+      input: await request.json(),
+      privatePhotos: isUpdate ? undefined : [] as PrivateCapsulePhotoInput[]
+    };
+  }
+
+  const form = await request.formData();
+  const rawMemoryIds = form.get('memoryIds');
+  let memoryIds: unknown = undefined;
+  if (typeof rawMemoryIds === 'string') {
+    try {
+      memoryIds = JSON.parse(rawMemoryIds);
+    } catch {
+      memoryIds = rawMemoryIds;
+    }
+  }
+  const replacePrivatePhotos = !isUpdate || form.get('replacePrivatePhotos') === 'true';
+  const privatePhotos = replacePrivatePhotos
+    ? await Promise.all(form.getAll('privatePhotos').map(async (value) => {
+      if (!(value instanceof File)) {
+        throw new TimeCapsuleServiceError('invalid_private_attachments', 'Choose a photo to upload.');
+      }
+      return { bytes: new Uint8Array(await value.arrayBuffer()) };
+    }))
+    : undefined;
+
+  return {
+    input: {
+      title: form.get('title') ?? undefined,
+      message: form.has('message') ? form.get('message') : undefined,
+      unlockAt: form.get('unlockAt') ?? undefined,
+      memoryIds
+    },
+    privatePhotos
+  };
+}
 
 app.get('/health', (c) => c.json({ status: 'ok', service: 'familyapp-api' }));
 
@@ -146,6 +196,103 @@ app.post('/families/:familyId/messages', sessionMiddleware, async (c) => {
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof ChatServiceError) {
       return c.json({ error: error.message, code: error.code }, error.status as 400 | 403);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/private-conversations', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const conversations = await listPrivateConversations(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId')
+    );
+    return c.json({ conversations });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PrivateChatServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/private-conversations', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ recipientMemberId?: unknown }>();
+    const conversation = await startPrivateConversation(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      body.recipientMemberId
+    );
+    return c.json({ conversation }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PrivateChatServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/private-conversations/:conversationId/messages', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    return c.json(await listPrivateMessages(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      c.req.param('conversationId')
+    ));
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PrivateChatServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/private-conversations/:conversationId/messages', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const message = await createPrivateMessage(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      c.req.param('conversationId'),
+      await c.req.json()
+    );
+    return c.json({ message }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChatServiceError || error instanceof PrivateChatServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/private-conversations/:conversationId/read', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ messageId?: unknown }>();
+    await markPrivateConversationRead(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      c.req.param('conversationId'),
+      body.messageId
+    );
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof PrivateChatServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
     }
     throw error;
   }
@@ -390,19 +537,49 @@ app.get('/families/:familyId/time-capsules/:capsuleId', sessionMiddleware, async
   }
 });
 
+app.get('/families/:familyId/time-capsules/:capsuleId/attachments/:attachmentId/media', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const { objectKey, mimeType } = await getTimeCapsuleAttachmentMedia(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      c.req.param('capsuleId'),
+      c.req.param('attachmentId')
+    );
+    if (!c.env.MEMORIES_BUCKET) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
+    const object = await c.env.MEMORIES_BUCKET.get(objectKey);
+    if (!object) return c.json({ error: 'Private capsule photo not found.', code: 'attachment_not_found' }, 404);
+    return c.body(object.body, 200, {
+      'Content-Type': mimeType,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff'
+    });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409 | 413 | 415 | 502 | 503);
+    }
+    throw error;
+  }
+});
+
 app.post('/families/:familyId/time-capsules', sessionMiddleware, async (c) => {
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
+    const request = await readTimeCapsuleRequest(c.req.raw, false);
     return c.json(await createTimeCapsule(
       createDatabase(c.env.DATABASE_URL),
       session.user.id,
       c.req.param('familyId'),
-      await c.req.json()
+      request.input,
+      request.privatePhotos,
+      c.env.MEMORIES_BUCKET
     ), 201);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
-      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409 | 413 | 415 | 502 | 503);
     }
     throw error;
   }
@@ -412,16 +589,19 @@ app.patch('/families/:familyId/time-capsules/:capsuleId', sessionMiddleware, asy
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
+    const request = await readTimeCapsuleRequest(c.req.raw, true);
     return c.json(await updateTimeCapsule(
       createDatabase(c.env.DATABASE_URL),
       session.user.id,
       c.req.param('familyId'),
       c.req.param('capsuleId'),
-      await c.req.json()
+      request.input,
+      request.privatePhotos,
+      c.env.MEMORIES_BUCKET
     ));
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
-      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409 | 413 | 415 | 502 | 503);
     }
     throw error;
   }
@@ -435,12 +615,13 @@ app.delete('/families/:familyId/time-capsules/:capsuleId', sessionMiddleware, as
       createDatabase(c.env.DATABASE_URL),
       session.user.id,
       c.req.param('familyId'),
-      c.req.param('capsuleId')
+      c.req.param('capsuleId'),
+      c.env.MEMORIES_BUCKET
     );
     return c.body(null, 204);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
-      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409 | 413 | 415 | 502 | 503);
     }
     throw error;
   }

@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { apiFetch } from './api';
 
 export type CapsuleCreator = { memberId: string; displayName: string; avatar: string | null };
@@ -22,11 +24,20 @@ export type CapsuleMemory = {
   sharedBy: CapsuleCreator;
 };
 
+export type CapsulePrivateAttachment = {
+  id: string;
+  familyId: string;
+  capsuleId: string;
+  mimeType: string;
+};
+
+export type CapsulePhotoInput = { uri: string; name: string; type: string };
 export type LockedTimeCapsule = TimeCapsuleSummary & { isLocked: true };
 export type UnlockedTimeCapsule = TimeCapsuleSummary & {
   isLocked: false;
   message: string | null;
   memories: CapsuleMemory[];
+  privateAttachments: CapsulePrivateAttachment[];
 };
 export type TimeCapsuleDetail = LockedTimeCapsule | UnlockedTimeCapsule;
 
@@ -35,6 +46,8 @@ export type TimeCapsuleInput = {
   message?: string | null;
   unlockAt?: string;
   memoryIds?: string[];
+  privatePhotos?: CapsulePhotoInput[];
+  replacePrivatePhotos?: boolean;
 };
 
 export class TimeCapsulesApiError extends Error {
@@ -50,8 +63,27 @@ async function readResponse<T>(response: Response) {
   return body;
 }
 
-function jsonRequest(method: string, body: unknown): RequestInit {
-  return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+async function formRequest(method: string, input: TimeCapsuleInput) {
+  const form = new FormData();
+  if (input.title !== undefined) form.append('title', input.title);
+  if (input.message !== undefined) form.append('message', input.message ?? '');
+  if (input.unlockAt !== undefined) form.append('unlockAt', input.unlockAt);
+  if (input.memoryIds !== undefined) form.append('memoryIds', JSON.stringify(input.memoryIds));
+  if (input.replacePrivatePhotos) form.append('replacePrivatePhotos', 'true');
+
+  for (const photo of input.privatePhotos ?? []) {
+    if (Platform.OS === 'web') {
+      const response = await fetch(photo.uri);
+      form.append('privatePhotos', await response.blob(), photo.name);
+    } else {
+      form.append('privatePhotos', { uri: photo.uri, name: photo.name, type: photo.type } as unknown as Blob);
+    }
+  }
+  return { method, body: form };
+}
+
+export function privateCapsuleAttachmentMediaPath(familyId: string, capsuleId: string, attachmentId: string) {
+  return `/families/${encodeURIComponent(familyId)}/time-capsules/${encodeURIComponent(capsuleId)}/attachments/${encodeURIComponent(attachmentId)}/media`;
 }
 
 export async function getFamilyTimeCapsules(familyId: string) {
@@ -66,9 +98,12 @@ export async function getFamilyTimeCapsule(familyId: string, capsuleId: string) 
   );
 }
 
-export async function createFamilyTimeCapsule(familyId: string, input: Required<Pick<TimeCapsuleInput, 'title' | 'unlockAt'>> & TimeCapsuleInput) {
+export async function createFamilyTimeCapsule(
+  familyId: string,
+  input: Required<Pick<TimeCapsuleInput, 'title' | 'unlockAt'>> & TimeCapsuleInput
+) {
   return readResponse<{ capsule: TimeCapsuleDetail; serverNow: string }>(
-    await apiFetch(`/families/${encodeURIComponent(familyId)}/time-capsules`, jsonRequest('POST', input))
+    await apiFetch(`/families/${encodeURIComponent(familyId)}/time-capsules`, await formRequest('POST', input))
   );
 }
 
@@ -76,7 +111,7 @@ export async function updateFamilyTimeCapsule(familyId: string, capsuleId: strin
   return readResponse<{ capsule: TimeCapsuleDetail; serverNow: string }>(
     await apiFetch(
       `/families/${encodeURIComponent(familyId)}/time-capsules/${encodeURIComponent(capsuleId)}`,
-      jsonRequest('PATCH', input)
+      await formRequest('PATCH', input)
     )
   );
 }

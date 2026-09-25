@@ -279,6 +279,91 @@ export const familyMessages = pgTable(
   ]
 );
 
+export const familyPrivateConversations = pgTable(
+  'family_private_conversations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    memberOneId: uuid('member_one_id').notNull(),
+    memberTwoId: uuid('member_two_id').notNull(),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_private_conversations_member_one_family_fk',
+      columns: [table.memberOneId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_private_conversations_member_two_family_fk',
+      columns: [table.memberTwoId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    unique('family_private_conversations_id_family_unique').on(table.id, table.familyId),
+    uniqueIndex('family_private_conversations_pair_unique').on(table.familyId, table.memberOneId, table.memberTwoId),
+    index('family_private_conversations_family_activity_idx').on(table.familyId, table.lastMessageAt),
+    check('family_private_conversations_canonical_pair', sql`${table.memberOneId} < ${table.memberTwoId}`)
+  ]
+);
+
+export const familyPrivateConversationParticipants = pgTable(
+  'family_private_conversation_participants',
+  {
+    conversationId: uuid('conversation_id').notNull(),
+    familyId: uuid('family_id').notNull(),
+    memberId: uuid('member_id').notNull(),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_private_conversation_participants_conversation_family_fk',
+      columns: [table.conversationId, table.familyId],
+      foreignColumns: [familyPrivateConversations.id, familyPrivateConversations.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_private_conversation_participants_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    unique('family_private_conversation_participants_identity_unique').on(
+      table.conversationId,
+      table.familyId,
+      table.memberId
+    ),
+    index('family_private_conversation_participants_member_idx').on(table.familyId, table.memberId)
+  ]
+);
+
+export const familyPrivateMessages = pgTable(
+  'family_private_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    conversationId: uuid('conversation_id').notNull(),
+    senderMemberId: uuid('sender_member_id').notNull(),
+    text: text('text').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_private_messages_sender_participant_fk',
+      columns: [table.conversationId, table.familyId, table.senderMemberId],
+      foreignColumns: [
+        familyPrivateConversationParticipants.conversationId,
+        familyPrivateConversationParticipants.familyId,
+        familyPrivateConversationParticipants.memberId
+      ]
+    }).onDelete('cascade'),
+    index('family_private_messages_conversation_created_at_idx').on(table.conversationId, table.createdAt),
+    index('family_private_messages_sender_idx').on(table.senderMemberId),
+    check(
+      'family_private_messages_text_length',
+      sql`char_length(${table.text}) between 1 and 2000 and ${table.text} = btrim(${table.text})`
+    )
+  ]
+);
+
 export const memoryMediaType = pgEnum('memory_media_type', ['image']);
 
 export const familyMemories = pgTable(
@@ -397,6 +482,29 @@ export const familyTimeCapsuleMemories = pgTable(
     }).onDelete('cascade'),
     uniqueIndex('family_time_capsule_memories_capsule_memory_unique').on(table.capsuleId, table.memoryId),
     index('family_time_capsule_memories_memory_idx').on(table.memoryId)
+  ]
+);
+
+export const familyTimeCapsuleAttachments = pgTable(
+  'family_time_capsule_attachments',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    capsuleId: uuid('capsule_id').notNull(),
+    objectKey: text('object_key').notNull(),
+    mimeType: text('mime_type').notNull(),
+    fileSizeBytes: integer('file_size_bytes').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_time_capsule_attachments_capsule_family_fk',
+      columns: [table.capsuleId, table.familyId],
+      foreignColumns: [familyTimeCapsules.id, familyTimeCapsules.familyId]
+    }).onDelete('cascade'),
+    unique('family_time_capsule_attachments_object_key_unique').on(table.objectKey),
+    index('family_time_capsule_attachments_capsule_idx').on(table.capsuleId),
+    check('family_time_capsule_attachments_file_size_positive', sql`${table.fileSizeBytes} > 0`)
   ]
 );
 
