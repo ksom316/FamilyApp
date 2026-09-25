@@ -164,7 +164,7 @@ export function MobileFamilyNavigation() {
 }
 
 const styles = StyleSheet.create({
-  sidebar: { borderRightWidth: 1, flex: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xl, width: 264 },
+  sidebar: { borderRightWidth: 1, flexShrink: 0, overflow: 'hidden', paddingHorizontal: spacing.md, paddingTop: spacing.xl, width: 264 },
   familyBadge: { borderRadius: radius.md, marginTop: spacing.xl, padding: spacing.md },
   familyName: { marginTop: spacing.xs },
   sideLinksScroll: { flex: 1, minHeight: 0, marginTop: spacing.lg },
