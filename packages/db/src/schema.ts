@@ -121,6 +121,9 @@ export const familyMembers = pgTable(
   ]
 );
 
+// Family Network subgroups (e.g. "Parents", "Kids", "Accra Household"). A member can
+// belong to any number of these without leaving the family itself — the family remains
+// the only security boundary; households are purely an organizational grouping within it.
 export const households = pgTable(
   'households',
   {
@@ -129,11 +132,28 @@ export const households = pgTable(
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    description: text('description'),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
     ...timestamps
   },
   (table) => [
+    foreignKey({
+      name: 'households_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
     unique('households_id_family_unique').on(table.id, table.familyId),
-    index('households_family_idx').on(table.familyId)
+    uniqueIndex('households_family_name_unique').on(table.familyId, table.name),
+    index('households_family_idx').on(table.familyId),
+    index('households_creator_idx').on(table.createdByMemberId),
+    check(
+      'households_name_length',
+      sql`char_length(${table.name}) between 1 and 80 and ${table.name} = btrim(${table.name})`
+    ),
+    check(
+      'households_description_length',
+      sql`${table.description} is null or (char_length(${table.description}) between 1 and 500 and ${table.description} = btrim(${table.description}))`
+    )
   ]
 );
 

@@ -8,6 +8,16 @@ import { BrainServiceError, respondToBrainMessage } from './brain-service';
 import { ChatServiceError, createFamilyMessage, listFamilyMessages } from './chat-service';
 import { acceptFamilyInvitation, createFamily, createFamilyInvitation, FamilyServiceError, listFamilyMembers, listFamilyMemberships } from './family-service';
 import {
+  addHouseholdMember,
+  createHousehold,
+  deleteHousehold,
+  getHousehold,
+  HouseholdServiceError,
+  listHouseholds,
+  removeHouseholdMember,
+  updateHousehold
+} from './households-service';
+import {
   cancelOutgoingFindMeRequest,
   createFindMeRequest,
   getOutgoingFindMeRequest,
@@ -157,6 +167,87 @@ app.get('/families/:familyId/members', sessionMiddleware, async (c) => {
     if (error instanceof FamilyServiceError) {
       return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 409 | 410);
     }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/households', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const households = await listHouseholds(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json({ households });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof HouseholdServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/households/:householdId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    return c.json(await getHousehold(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('householdId')));
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof HouseholdServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/households', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const result = await createHousehold(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json(result, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof HouseholdServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/households/:householdId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    return c.json(await updateHousehold(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('householdId'), await c.req.json()));
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof HouseholdServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/households/:householdId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await deleteHousehold(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('householdId'));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof HouseholdServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/households/:householdId/members', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ memberId?: unknown }>();
+    return c.json(await addHouseholdMember(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('householdId'), body.memberId));
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof HouseholdServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/households/:householdId/members/:memberId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    return c.json(await removeHouseholdMember(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('householdId'), c.req.param('memberId')));
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof HouseholdServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
     throw error;
   }
 });

@@ -64,6 +64,13 @@
       "when": 1790319661888,
       "tag": "0008_goofy_skin",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790320483844,
+      "tag": "0009_bumpy_spencer_smythe",
+      "breakpoints": true
     }
   ]
 }
