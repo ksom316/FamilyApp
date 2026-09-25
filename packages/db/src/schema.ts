@@ -817,3 +817,85 @@ export const familyShoppingItems = pgTable(
     check('family_shopping_items_quantity_positive', sql`${table.quantity} is null or ${table.quantity} > 0`)
   ]
 );
+
+// Menus target either the whole family (householdId null) or one existing subgroup —
+// same shape as polls/shopping lists. weekStartDate is always a Monday (enforced by
+// check below), giving every week a single canonical identity per target.
+export const familyMenus = pgTable(
+  'family_menus',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    householdId: uuid('household_id'),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    weekStartDate: date('week_start_date', { mode: 'string' }).notNull(),
+    title: text('title'),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_menus_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'family_menus_household_family_fk',
+      columns: [table.householdId, table.familyId],
+      foreignColumns: [households.id, households.familyId]
+    }).onDelete('cascade'),
+    unique('family_menus_id_family_unique').on(table.id, table.familyId),
+    // Defense-in-depth against duplicate menus for the same target/week. The primary
+    // guard is an application-level find-or-create check (see menus-service), since a
+    // plain unique index can't by itself distinguish "no household" from "no household"
+    // across two different rows the way NULL comparisons work in Postgres for the
+    // household-less case; this index still fully protects the household-targeted case.
+    unique('family_menus_family_household_week_unique').on(table.familyId, table.householdId, table.weekStartDate),
+    index('family_menus_family_week_idx').on(table.familyId, table.weekStartDate),
+    index('family_menus_household_idx').on(table.householdId),
+    index('family_menus_creator_idx').on(table.createdByMemberId),
+    check('family_menus_week_start_is_monday', sql`extract(dow from ${table.weekStartDate}) = 1`),
+    check(
+      'family_menus_title_length',
+      sql`${table.title} is null or (char_length(${table.title}) between 1 and 100 and ${table.title} = btrim(${table.title}))`
+    )
+  ]
+);
+
+// A meal "slot" only exists as a row when it has content — an empty Breakfast/Lunch/
+// Dinner is simply the absence of a row for that (menuId, mealDate, mealType), not a row
+// with an empty name. mealType is plain text with a check constraint (rather than a
+// pgEnum) specifically so adding e.g. "snack" later is a one-line constraint change
+// instead of an enum-value migration.
+export const familyMenuMeals = pgTable(
+  'family_menu_meals',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    menuId: uuid('menu_id').notNull(),
+    mealDate: date('meal_date', { mode: 'string' }).notNull(),
+    mealType: text('meal_type').notNull(),
+    mealName: text('meal_name').notNull(),
+    note: text('note'),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_menu_meals_menu_family_fk',
+      columns: [table.menuId, table.familyId],
+      foreignColumns: [familyMenus.id, familyMenus.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_menu_meals_menu_date_type_unique').on(table.menuId, table.mealDate, table.mealType),
+    index('family_menu_meals_menu_idx').on(table.menuId),
+    check('family_menu_meals_type_allowed', sql`${table.mealType} in ('breakfast', 'lunch', 'dinner')`),
+    check(
+      'family_menu_meals_name_length',
+      sql`char_length(${table.mealName}) between 1 and 140 and ${table.mealName} = btrim(${table.mealName})`
+    ),
+    check(
+      'family_menu_meals_note_length',
+      sql`${table.note} is null or (char_length(${table.note}) between 1 and 300 and ${table.note} = btrim(${table.note}))`
+    )
+  ]
+);

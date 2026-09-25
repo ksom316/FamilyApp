@@ -12,6 +12,7 @@ import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyMembers } from '../../lib/families';
 import { getFamilyLocationShares, getIncomingFindMeRequests, type FamilyLocationShare, type IncomingFindMeRequest } from '../../lib/location';
 import { getFamilyMemories, type FamilyMemory } from '../../lib/memories';
+import { getMenuForTarget, type Menu } from '../../lib/menus';
 import { getFamilyPlans, type FamilyPlans } from '../../lib/plans';
 import { getFamilyTimeCapsules, type TimeCapsuleSummary } from '../../lib/time-capsules';
 import { useAuth } from '../../lib/use-auth';
@@ -20,6 +21,23 @@ function greetingForHour(hour: number) {
   if (hour < 12) return 'Good morning';
   if (hour < 18) return 'Good afternoon';
   return 'Good evening';
+}
+
+function pad(value: number) {
+  return String(value).padStart(2, '0');
+}
+
+function todayLocalDateString() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function mondayOfLocalWeekStart() {
+  const now = new Date();
+  const day = now.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  now.setDate(now.getDate() + diff);
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 export default function FamilyHomeScreen() {
@@ -39,6 +57,9 @@ export default function FamilyHomeScreen() {
   const [locationFailed, setLocationFailed] = useState(false);
   const [timeCapsules, setTimeCapsules] = useState<TimeCapsuleSummary[] | null>(null);
   const [timeCapsulesFailed, setTimeCapsulesFailed] = useState(false);
+  const [todayMenu, setTodayMenu] = useState<Menu | null>(null);
+  const [menuLoaded, setMenuLoaded] = useState(false);
+  const [menuFailed, setMenuFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -47,6 +68,8 @@ export default function FamilyHomeScreen() {
     setMemoriesFailed(false);
     setLocationFailed(false);
     setTimeCapsulesFailed(false);
+    setMenuLoaded(false);
+    setMenuFailed(false);
     void getFamilyMembers(family.familyId).then((members) => {
       if (active) setMemberCount(members.length);
     }).catch(() => {
@@ -72,6 +95,14 @@ export default function FamilyHomeScreen() {
     }).catch(() => {
       if (active) setTimeCapsulesFailed(true);
     });
+    // Only the whole-family menu is shown here, never a household menu — if the viewer
+    // belongs to multiple households plus the family, combining several menus into one
+    // "today" summary would be ambiguous, so this card deliberately picks one clear rule.
+    void getMenuForTarget(family.familyId, null, mondayOfLocalWeekStart()).then((result) => {
+      if (active) { setTodayMenu(result.menu); setMenuLoaded(true); }
+    }).catch(() => {
+      if (active) setMenuFailed(true);
+    });
     return () => { active = false; };
   }, [family.familyId]);
 
@@ -87,6 +118,12 @@ export default function FamilyHomeScreen() {
   const lockedCapsules = timeCapsules?.filter((capsule) => capsule.isLocked) ?? [];
   const nextCapsule = lockedCapsules[0];
   const pendingTasks = plans?.tasks.filter((task) => !task.completedAt) ?? [];
+  const today = todayLocalDateString();
+  const todayMeals = todayMenu ? {
+    breakfast: todayMenu.meals.find((meal) => meal.mealDate === today && meal.mealType === 'breakfast') ?? null,
+    lunch: todayMenu.meals.find((meal) => meal.mealDate === today && meal.mealType === 'lunch') ?? null,
+    dinner: todayMenu.meals.find((meal) => meal.mealDate === today && meal.mealType === 'dinner') ?? null
+  } : null;
   const upcomingPlans = plans ? [
     ...plans.events.map((event) => ({ id: `event-${event.id}`, title: event.title, at: event.startsAt, kind: 'Event' })),
     ...pendingTasks.map((task) => ({ id: `task-${task.id}`, title: task.title, at: task.dueAt, kind: 'Task' }))
@@ -188,6 +225,22 @@ export default function FamilyHomeScreen() {
         <Button label="Ask Family Brain" variant="secondary" onPress={() => router.push('/(family)/brain' as never)} style={styles.brainAction} />
       </Card>
 
+      <Card style={[styles.menuCard, { backgroundColor: theme.accentSoft }]}>
+        <AppText variant="eyebrow" style={{ color: theme.warning }}>Today’s menu</AppText>
+        {todayMeals ? (
+          <View style={styles.menuMeals}>
+            <View style={styles.menuMealRow}><AppText variant="label">Breakfast</AppText><AppText variant="body" tone="mutedText" numberOfLines={1}>{todayMeals.breakfast?.mealName ?? 'Not planned'}</AppText></View>
+            <View style={styles.menuMealRow}><AppText variant="label">Lunch</AppText><AppText variant="body" tone="mutedText" numberOfLines={1}>{todayMeals.lunch?.mealName ?? 'Not planned'}</AppText></View>
+            <View style={styles.menuMealRow}><AppText variant="label">Dinner</AppText><AppText variant="body" tone="mutedText" numberOfLines={1}>{todayMeals.dinner?.mealName ?? 'Not planned'}</AppText></View>
+          </View>
+        ) : (
+          <AppText variant="body" tone="mutedText" style={styles.menuEmptyText}>
+            {menuFailed ? 'Unavailable right now' : menuLoaded ? 'No menu planned for the family this week yet.' : 'Loading this week’s menu…'}
+          </AppText>
+        )}
+        <Button label="View menu" variant="quiet" onPress={() => router.push('/(family)/menu' as never)} style={styles.actionButton} />
+      </Card>
+
       <View style={[styles.lowerGrid, isWideHero && styles.lowerGridWide]}>
         <Card style={styles.lowerCard}>
           <AppText variant="heading">Upcoming</AppText>
@@ -236,6 +289,10 @@ const styles = StyleSheet.create({
   brainMark: { alignItems: 'center', borderRadius: radius.md, height: 42, justifyContent: 'center', width: 42 },
   brainTitle: { marginBottom: spacing.sm, marginTop: spacing.lg, maxWidth: 680 },
   brainAction: { alignSelf: 'flex-start', marginTop: spacing.lg },
+  menuCard: { marginTop: spacing.lg, padding: spacing.xl },
+  menuMeals: { gap: spacing.sm, marginTop: spacing.md },
+  menuMealRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
+  menuEmptyText: { marginTop: spacing.md },
   lowerGrid: { gap: spacing.md, marginTop: spacing.lg },
   lowerGridWide: { flexDirection: 'row' },
   lowerCard: { flex: 1, minHeight: 230 },
