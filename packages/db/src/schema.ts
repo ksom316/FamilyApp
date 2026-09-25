@@ -379,6 +379,28 @@ export const familyMessages = pgTable(
   ]
 );
 
+// One row per (family, member): the member's read position in that family's shared group
+// chat. Deliberately not a row-per-message read receipt table — advancing lastReadAt is
+// enough to derive "unread since" for a single shared room, exactly the same shape as
+// family_private_conversation_participants.lastReadAt uses per private conversation.
+export const familyChatReadStates = pgTable(
+  'family_chat_read_states',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    memberId: uuid('member_id').notNull(),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_chat_read_states_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_chat_read_states_family_member_unique').on(table.familyId, table.memberId)
+  ]
+);
+
 export const familyPrivateConversations = pgTable(
   'family_private_conversations',
   {

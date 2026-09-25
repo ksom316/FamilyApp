@@ -44,3 +44,17 @@ export async function sendFamilyMessage(familyId: string, text: string) {
   });
   return (await readResponse<{ message: FamilyMessage }>(response)).message;
 }
+
+export async function getFamilyMessagesUnreadCount(familyId: string) {
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/messages/unread-count`);
+  return (await readResponse<{ unreadCount: number }>(response)).unreadCount;
+}
+
+export async function markFamilyMessagesRead(familyId: string, messageId: string) {
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/messages/read`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageId })
+  });
+  if (!response.ok) await readResponse(response);
+}

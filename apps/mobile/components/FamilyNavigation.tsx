@@ -10,16 +10,22 @@ import { BrandMark } from './BrandMark';
 import { Button } from './Button';
 import { authClient } from '../lib/auth-client';
 import type { FamilyMembership } from '../lib/families';
-import { EMPTY_NAVIGATION_ATTENTION_COUNTS, loadNavigationAttentionCounts, type NavigationAttentionCounts } from '../lib/navigation-attention';
+import {
+  EMPTY_NAVIGATION_ATTENTION_COUNTS,
+  loadNavigationAttentionCounts,
+  subscribeToAttentionRefresh,
+  type NavigationAttentionCounts
+} from '../lib/navigation-attention';
 
 const ATTENTION_POLL_INTERVAL_MS = 30_000;
-// Which nav item each attention count belongs to. Notifications keeps its existing badge;
-// Tasks/Polls/Emergency are the new ones. Chat has no badge — see the report for why.
+// Which nav item each attention count belongs to. Chat combines group-chat unread (this
+// member's own read-state row) with the sum of every private conversation's unread count.
 const BADGE_COUNT_KEYS: Partial<Record<string, keyof NavigationAttentionCounts>> = {
   notifications: 'notifications',
   tasks: 'tasks',
   polls: 'polls',
-  emergency: 'emergencies'
+  emergency: 'emergencies',
+  chat: 'chat'
 };
 
 type NavItem = { name: string; label: string; mark: string };
@@ -94,10 +100,14 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void loadCounts();
     });
+    // And refresh immediately when a screen reports it just changed a read-state (e.g.
+    // marking chat read) — no new timer, just an on-demand call to the same loader.
+    const unsubscribeAttentionRefresh = subscribeToAttentionRefresh(() => void loadCounts());
     return () => {
       activeRef.current = false;
       clearInterval(interval);
       subscription.remove();
+      unsubscribeAttentionRefresh();
     };
   }, [loadCounts]);
 
@@ -113,7 +123,12 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
           <View key={group.label || `group-${index}`} style={index > 0 && styles.navGroup}>
             {group.label ? <AppText variant="caption" tone="mutedText" style={styles.groupLabel}>{group.label.toUpperCase()}</AppText> : null}
             {group.items.map((item) => {
-              const active = pathname.split('/').includes(item.name) || (item.name === 'chat' && pathname.split('/').includes('private-chat'));
+              // Match on the top-level route segment only (e.g. "chat" in "/chat/family"),
+              // never "does this name appear anywhere in the path" — otherwise a nested
+              // segment that happens to share a name with another nav item (like
+              // "/chat/family") would also light up that other item.
+              const topLevelSegment = pathname.split('/')[1] ?? '';
+              const active = topLevelSegment === item.name || (item.name === 'chat' && topLevelSegment === 'private-chat');
               const countKey = BADGE_COUNT_KEYS[item.name];
               const badgeCount = countKey ? counts[countKey] : 0;
               return (
@@ -170,7 +185,11 @@ export function MobileFamilyNavigation() {
   return (
     <View style={[styles.bottomNav, { backgroundColor: theme.surface, borderColor: theme.border, paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       {items.map((item) => {
-        const active = pathname.endsWith(`/${item.name}`) || (item.name === 'more' && ['chat', 'private-chat', 'calendar', 'memories', 'polls', 'shopping', 'menu', 'capsules', 'location', 'check-ins', 'emergency', 'notifications', 'tasks', 'brain', 'invite'].some((route) => pathname.split('/').includes(route)));
+        // Same fix as the desktop sidebar: match the top-level route segment only, so a
+        // nested segment sharing a name with another tab (e.g. "/chat/family") can't also
+        // light up that other tab.
+        const topLevelSegment = pathname.split('/')[1] ?? '';
+        const active = topLevelSegment === item.name || (item.name === 'more' && ['chat', 'private-chat', 'calendar', 'memories', 'polls', 'shopping', 'menu', 'capsules', 'location', 'check-ins', 'emergency', 'notifications', 'tasks', 'brain', 'invite'].includes(topLevelSegment));
         return (
           <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={item.label} onPress={() => router.navigate(`/(family)/${item.name}` as never)} style={[styles.bottomItem, active && { backgroundColor: theme.primarySoft }]}>
             <AppText variant="body" tone={active ? 'primary' : 'mutedText'}>{item.mark}</AppText>

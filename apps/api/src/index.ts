@@ -22,7 +22,7 @@ import {
   listEmergencies,
   resolveEmergency
 } from './emergency-service';
-import { ChatServiceError, createFamilyMessage, listFamilyMessages } from './chat-service';
+import { ChatServiceError, createFamilyMessage, getGroupChatUnreadCount, listFamilyMessages, markGroupChatRead } from './chat-service';
 import {
   ChoreServiceError,
   createChore,
@@ -839,6 +839,44 @@ app.post('/families/:familyId/messages', sessionMiddleware, async (c) => {
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof ChatServiceError) {
       return c.json({ error: error.message, code: error.code }, error.status as 400 | 403);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/messages/unread-count', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const unreadCount = await getGroupChatUnreadCount(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId')
+    );
+    return c.json({ unreadCount });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChatServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/messages/read', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ messageId?: unknown }>();
+    await markGroupChatRead(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      body.messageId
+    );
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof ChatServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
     }
     throw error;
   }
