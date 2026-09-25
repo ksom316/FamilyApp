@@ -102,6 +102,7 @@ import {
   setSavedMenuMeal,
   updateSavedMenu
 } from './saved-menus-service';
+import { listNotifications, markAllNotificationsRead, markNotificationRead, NotificationServiceError } from './notifications-service';
 import { sessionMiddleware, type ApiEnv } from './session-middleware';
 import {
   addShoppingItem,
@@ -1531,6 +1532,42 @@ app.post('/families/:familyId/emergencies/:incidentId/resolve', sessionMiddlewar
     return c.json({ incident });
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof EmergencyServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/notifications', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const result = await listNotifications(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json(result);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof NotificationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/notifications/:notificationId/read', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await markNotificationRead(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('notificationId'));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof NotificationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/notifications/read-all', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await markAllNotificationsRead(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof NotificationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
     throw error;
   }
 });

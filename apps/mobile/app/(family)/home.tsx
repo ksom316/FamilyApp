@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
@@ -11,6 +11,7 @@ import { Screen } from '../../components/Screen';
 import { getFamilyCheckIns, postCheckIn, type FamilyCheckIn } from '../../lib/check-ins';
 import { getFamilyEmergencies, type EmergencyIncident } from '../../lib/emergency';
 import { useCurrentFamily } from '../../lib/family-context';
+import { getFamilyNotifications } from '../../lib/notifications';
 import { getFamilyMembers } from '../../lib/families';
 import { getFamilyLocationShares, getIncomingFindMeRequests, type FamilyLocationShare, type IncomingFindMeRequest } from '../../lib/location';
 import { getFamilyMemories, type FamilyMemory } from '../../lib/memories';
@@ -66,6 +67,7 @@ export default function FamilyHomeScreen() {
   const [checkInsFailed, setCheckInsFailed] = useState(false);
   const [checkInSending, setCheckInSending] = useState<'safe' | 'arrived' | null>(null);
   const [activeEmergencies, setActiveEmergencies] = useState<EmergencyIncident[] | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -120,6 +122,11 @@ export default function FamilyHomeScreen() {
     }).catch(() => {
       // The compact Emergency shortcut degrades gracefully with no count shown.
     });
+    void getFamilyNotifications(family.familyId).then((result) => {
+      if (active) setUnreadNotifications(result.unreadCount);
+    }).catch(() => {
+      // The Notifications shortcut degrades gracefully with no count shown.
+    });
     return () => { active = false; };
   }, [family.familyId, family.id]);
 
@@ -163,7 +170,17 @@ export default function FamilyHomeScreen() {
     <Screen scroll maxWidth={1080} contentStyle={styles.content}>
       <View style={[styles.welcome, isWideHero && styles.welcomeWide]}>
         <View style={styles.welcomeCopy}>
-          <AppText variant="eyebrow" tone="primary">{greetingForHour(new Date().getHours())}, {firstName}</AppText>
+          <View style={styles.welcomeTopRow}>
+            <AppText variant="eyebrow" tone="primary">{greetingForHour(new Date().getHours())}, {firstName}</AppText>
+            <Pressable accessibilityRole="button" onPress={() => router.push('/(family)/notifications' as never)} style={styles.notificationBell}>
+              <AppText variant="heading">🔔</AppText>
+              {unreadNotifications > 0 ? (
+                <View style={[styles.notificationBadge, { backgroundColor: theme.danger }]}>
+                  <AppText variant="caption" style={styles.notificationBadgeText}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</AppText>
+                </View>
+              ) : null}
+            </Pressable>
+          </View>
           <AppText variant="display" style={styles.title}>{family.familyName}</AppText>
           <AppText variant="body" tone="mutedText" style={styles.subtitle}>Your family’s home, all in one warm place.</AppText>
         </View>
@@ -326,6 +343,10 @@ const styles = StyleSheet.create({
   welcome: { alignItems: 'center', gap: spacing.lg },
   welcomeWide: { alignItems: 'stretch', flexDirection: 'row' },
   welcomeCopy: { flex: 1, minWidth: 0, paddingVertical: spacing.lg },
+  welcomeTopRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  notificationBell: { padding: spacing.xs, position: 'relative' },
+  notificationBadge: { alignItems: 'center', borderRadius: 9, height: 18, justifyContent: 'center', minWidth: 18, paddingHorizontal: 3, position: 'absolute', right: 0, top: 0 },
+  notificationBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
   title: { marginTop: spacing.sm },
   subtitle: { marginTop: spacing.sm },
   welcomeArt: { alignItems: 'center', borderRadius: radius.xl, height: 176, justifyContent: 'center', overflow: 'hidden', position: 'relative' },

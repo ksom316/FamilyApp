@@ -11,6 +11,7 @@ import {
 } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import { createNotifications, familyMemberIds, householdMemberIds, recipientsExcluding } from './notifications-service';
 
 const MAX_TITLE_LENGTH = 140;
 const MAX_DESCRIPTION_LENGTH = 2000;
@@ -382,7 +383,25 @@ export async function createCalendarEvent(db: Database, userId: string, familyId
     );
     await db.batch([eventInsert, audienceInsert] as const);
   } else await eventInsert;
-  return getCalendarEvent(db, userId, familyId, eventId);
+
+  const event = await getCalendarEvent(db, userId, familyId, eventId);
+  const recipientIds = audience.audienceType === 'family'
+    ? await familyMemberIds(db, familyId)
+    : audience.audienceType === 'household'
+      ? await householdMemberIds(db, familyId, audience.householdId as string)
+      : audience.memberIds;
+  await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+    familyId,
+    recipientMemberId,
+    actorMemberId: membership.id,
+    type: 'calendar_event_created',
+    title: `${event.createdBy.displayName} created an event: ${event.title}`,
+    entityType: 'calendar_event',
+    entityId: eventId,
+    route: '/(family)/calendar'
+  })));
+
+  return event;
 }
 
 export async function updateCalendarEvent(

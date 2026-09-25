@@ -7,6 +7,7 @@ import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 
 const destinations = [
+  { route: 'notifications', title: 'Notifications', detail: 'Activity across your family, in one place' },
   { route: 'chat', title: 'Family chat', detail: 'Little notes and conversations' },
   { route: 'calendar', title: 'Calendar', detail: 'Shared and private family events' },
   { route: 'memories', title: 'Memories', detail: 'Moments worth keeping' },

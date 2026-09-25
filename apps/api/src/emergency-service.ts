@@ -4,12 +4,20 @@ import type { Database } from '@familyapp/db';
 import { familyEmergencyAcknowledgements, familyEmergencyIncidents, familyMembers, users } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import { createNotifications, familyMemberIds, recipientsExcluding } from './notifications-service';
 
 export const EMERGENCY_TYPES = ['need_help', 'medical', 'safety_concern', 'other'] as const;
 export type EmergencyType = (typeof EMERGENCY_TYPES)[number];
 
 export const RESPONSE_STATUSES = ['seen', 'responding'] as const;
 export type ResponseStatus = (typeof RESPONSE_STATUSES)[number];
+
+const EMERGENCY_TYPE_LABELS: Record<EmergencyType, string> = {
+  need_help: 'Need help',
+  medical: 'Medical',
+  safety_concern: 'Safety concern',
+  other: 'Other'
+};
 
 const ACTIVE_INCIDENTS_LIMIT = 50;
 const RESOLVED_INCIDENTS_LIMIT = 30;
@@ -198,7 +206,21 @@ export async function createEmergency(db: Database, userId: string, familyId: st
     .values({ familyId, createdByMemberId: membership.id, emergencyType, message })
     .returning({ id: familyEmergencyIncidents.id });
 
-  return loadIncidentDetail(db, familyId, inserted.id);
+  const incident = await loadIncidentDetail(db, familyId, inserted.id);
+  const recipientIds = await familyMemberIds(db, familyId);
+  await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+    familyId,
+    recipientMemberId,
+    actorMemberId: membership.id,
+    type: 'emergency_reported',
+    title: `${incident.createdBy.displayName} reported a ${EMERGENCY_TYPE_LABELS[emergencyType]} emergency`,
+    message: incident.message,
+    entityType: 'emergency_incident',
+    entityId: inserted.id,
+    route: `/(family)/emergency/${inserted.id}`
+  })));
+
+  return incident;
 }
 
 type AcknowledgeInput = { responseStatus?: unknown };
@@ -220,7 +242,22 @@ export async function acknowledgeEmergency(db: Database, userId: string, familyI
   if (existing[0]) throw new EmergencyServiceError('already_acknowledged', 'You already responded to this emergency.', 409);
 
   await db.insert(familyEmergencyAcknowledgements).values({ familyId, incidentId, memberId: membership.id, responseStatus });
-  return loadIncidentDetail(db, familyId, incidentId);
+  const updated = await loadIncidentDetail(db, familyId, incidentId);
+
+  const actorName = updated.acknowledgements.find((ack) => ack.member.memberId === membership.id)?.member.displayName ?? 'A family member';
+  const recipientIds = await familyMemberIds(db, familyId);
+  await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+    familyId,
+    recipientMemberId,
+    actorMemberId: membership.id,
+    type: 'emergency_acknowledged',
+    title: responseStatus === 'responding' ? `${actorName} is responding to an emergency` : `${actorName} has seen the emergency`,
+    entityType: 'emergency_incident',
+    entityId: incidentId,
+    route: `/(family)/emergency/${incidentId}`
+  })));
+
+  return updated;
 }
 
 // Only the creator, or an owner/guardian, may resolve — enforced here, not just hidden in
@@ -242,5 +279,19 @@ export async function resolveEmergency(db: Database, userId: string, familyId: s
     .set({ status: 'resolved', resolvedAt: new Date(), resolvedByMemberId: membership.id })
     .where(and(eq(familyEmergencyIncidents.id, incidentId), eq(familyEmergencyIncidents.familyId, familyId)));
 
-  return loadIncidentDetail(db, familyId, incidentId);
+  const updated = await loadIncidentDetail(db, familyId, incidentId);
+  const resolverName = updated.resolvedBy?.displayName ?? 'A family member';
+  const recipientIds = await familyMemberIds(db, familyId);
+  await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+    familyId,
+    recipientMemberId,
+    actorMemberId: membership.id,
+    type: 'emergency_resolved',
+    title: `${resolverName} resolved the ${EMERGENCY_TYPE_LABELS[updated.emergencyType as EmergencyType]} emergency`,
+    entityType: 'emergency_incident',
+    entityId: incidentId,
+    route: `/(family)/emergency/${incidentId}`
+  })));
+
+  return updated;
 }

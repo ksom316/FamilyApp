@@ -1206,3 +1206,47 @@ export const familyEmergencyAcknowledgements = pgTable(
     check('family_emergency_acks_response_allowed', sql`${table.responseStatus} in ('seen', 'responding')`)
   ]
 );
+
+// Recipient-specific in-app notifications. Created only by the server, after the
+// triggering mutation has already succeeded — never by the mobile client, and never as
+// part of the same transaction as that mutation, so a notification-insert failure can
+// never roll back or corrupt the feature data that triggered it.
+export const familyNotifications = pgTable(
+  'family_notifications',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    recipientMemberId: uuid('recipient_member_id').notNull(),
+    actorMemberId: uuid('actor_member_id'),
+    type: text('type').notNull(),
+    title: text('title').notNull(),
+    message: text('message'),
+    entityType: text('entity_type'),
+    entityId: uuid('entity_id'),
+    route: text('route'),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_notifications_recipient_family_fk',
+      columns: [table.recipientMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_notifications_actor_family_fk',
+      columns: [table.actorMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('set null'),
+    index('family_notifications_recipient_created_idx').on(table.recipientMemberId, table.createdAt),
+    index('family_notifications_recipient_unread_idx').on(table.recipientMemberId, table.readAt),
+    check('family_notifications_title_length', sql`char_length(${table.title}) between 1 and 140`),
+    check(
+      'family_notifications_message_length',
+      sql`${table.message} is null or char_length(${table.message}) between 1 and 300`
+    ),
+    check('family_notifications_route_length', sql`${table.route} is null or char_length(${table.route}) between 1 and 200`)
+  ]
+);

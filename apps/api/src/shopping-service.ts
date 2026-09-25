@@ -11,6 +11,7 @@ import {
 } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import { createNotifications, familyMemberIds, householdMemberIds, recipientsExcluding } from './notifications-service';
 
 export type ShoppingErrorCode =
   | 'invalid_list'
@@ -285,7 +286,20 @@ export async function createShoppingList(db: Database, userId: string, familyId:
     .returning({ id: familyShoppingLists.id });
   if (!created) throw new Error('Shopping list creation did not return the created record.');
 
-  return getShoppingList(db, userId, familyId, created.id);
+  const list = await getShoppingList(db, userId, familyId, created.id);
+  const recipientIds = householdId ? await householdMemberIds(db, familyId, householdId) : await familyMemberIds(db, familyId);
+  await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+    familyId,
+    recipientMemberId,
+    actorMemberId: membership.id,
+    type: 'shopping_list_created',
+    title: `${list.createdBy.displayName} created a shopping list: ${list.name}`,
+    entityType: 'shopping_list',
+    entityId: created.id,
+    route: `/(family)/shopping/${created.id}`
+  })));
+
+  return list;
 }
 
 type UpdateListInput = { name?: unknown; description?: unknown; shoppingDate?: unknown };

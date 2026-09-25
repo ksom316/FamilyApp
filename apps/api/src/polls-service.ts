@@ -12,6 +12,7 @@ import {
 } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import { createNotifications, familyMemberIds, householdMemberIds, recipientsExcluding } from './notifications-service';
 
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 10;
@@ -254,7 +255,20 @@ export async function createPoll(db: Database, userId: string, familyId: string,
   const optionsInsert = db.insert(familyPollOptions).values(options.map((text, index) => ({ familyId, pollId, text, position: index })));
   await db.batch([pollInsert, optionsInsert] as const);
 
-  return getPoll(db, userId, familyId, pollId);
+  const poll = await getPoll(db, userId, familyId, pollId);
+  const recipientIds = householdId ? await householdMemberIds(db, familyId, householdId) : await familyMemberIds(db, familyId);
+  await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+    familyId,
+    recipientMemberId,
+    actorMemberId: membership.id,
+    type: 'poll_created',
+    title: `${poll.createdBy.displayName} created a poll: ${poll.question}`,
+    entityType: 'poll',
+    entityId: pollId,
+    route: `/(family)/polls/${pollId}`
+  })));
+
+  return poll;
 }
 
 export async function voteOnPoll(db: Database, userId: string, familyId: string, pollId: string, rawOptionId: unknown) {

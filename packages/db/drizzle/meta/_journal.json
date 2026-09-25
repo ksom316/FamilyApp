@@ -127,6 +127,13 @@
       "when": 1790331664927,
       "tag": "0017_strong_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790332943043,
+      "tag": "0018_silly_power_man",
+      "breakpoints": true
     }
   ]
 }
