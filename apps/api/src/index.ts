@@ -70,6 +70,21 @@ import {
   setMeal,
   updateMenu
 } from './menus-service';
+import {
+  applySavedMenuToWeek,
+  clearSavedMenuMeal,
+  createSavedMenu,
+  createShoppingListFromSavedMenu,
+  deleteSavedMenu,
+  duplicateSavedMenu,
+  getMenuHome,
+  getSavedMenu,
+  listSavedMenus,
+  SavedMenuServiceError,
+  setSavedMenuActive,
+  setSavedMenuMeal,
+  updateSavedMenu
+} from './saved-menus-service';
 import { sessionMiddleware, type ApiEnv } from './session-middleware';
 import {
   addShoppingItem,
@@ -470,6 +485,156 @@ app.post('/families/:familyId/menus/:menuId/shopping-list', sessionMiddleware, a
     return c.json({ list }, 201);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof MenuServiceError || error instanceof ShoppingServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/saved-menus/home', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const home = await getMenuHome(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json(home);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/saved-menus', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const savedMenus = await listSavedMenus(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json({ savedMenus });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/saved-menus/:savedMenuId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const savedMenu = await getSavedMenu(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('savedMenuId'));
+    return c.json({ savedMenu });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/saved-menus', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const savedMenu = await createSavedMenu(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json());
+    return c.json({ savedMenu }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/saved-menus/:savedMenuId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const savedMenu = await updateSavedMenu(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('savedMenuId'), await c.req.json());
+    return c.json({ savedMenu });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/saved-menus/:savedMenuId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await deleteSavedMenu(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('savedMenuId'));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/saved-menus/:savedMenuId/duplicate', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const savedMenu = await duplicateSavedMenu(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('savedMenuId'));
+    return c.json({ savedMenu }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/saved-menus/:savedMenuId/active', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ active?: unknown }>();
+    const savedMenu = await setSavedMenuActive(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('savedMenuId'), body.active);
+    return c.json({ savedMenu });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.put('/families/:familyId/saved-menus/:savedMenuId/meals', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const savedMenu = await setSavedMenuMeal(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('savedMenuId'), await c.req.json());
+    return c.json({ savedMenu });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/saved-menus/:savedMenuId/meals', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const savedMenu = await clearSavedMenuMeal(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('savedMenuId'), c.req.query('dayOfWeek'), c.req.query('mealType'));
+    return c.json({ savedMenu });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/saved-menus/:savedMenuId/apply', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ weekStartDate?: unknown }>();
+    const menu = await applySavedMenuToWeek(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('savedMenuId'), body.weekStartDate);
+    return c.json({ menu });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError || error instanceof MenuServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/saved-menus/:savedMenuId/shopping-list', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const list = await createShoppingListFromSavedMenu(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('savedMenuId'));
+    return c.json({ list }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof SavedMenuServiceError || error instanceof ShoppingServiceError) {
       return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
     }
     throw error;

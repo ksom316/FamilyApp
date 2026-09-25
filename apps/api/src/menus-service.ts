@@ -66,7 +66,7 @@ function formatShortRange(start: Date, end: Date) {
 // Client may supply any date (a full ISO datetime from a picker, or a bare date) — the
 // server always normalizes to the Monday of that calendar week, so week identity never
 // depends on client-side date math.
-function readWeekStartDate(value: unknown) {
+export function readWeekStartDate(value: unknown) {
   if (typeof value !== 'string') throw new MenuServiceError('invalid_week', 'Choose a valid week.');
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) throw new MenuServiceError('invalid_week', 'Choose a valid week.');

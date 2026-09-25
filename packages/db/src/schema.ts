@@ -899,3 +899,126 @@ export const familyMenuMeals = pgTable(
     )
   ]
 );
+
+// Reusable menu templates (F16B) — deliberately a separate table from family_menus
+// rather than a reuse of it, since a template has no calendar week at all (it lives
+// indefinitely until replaced) and its meal entries key off a day-of-week, not a date.
+//
+// F16C: audience is now one of three types rather than an implicit
+// whole-family/household toggle. audienceType='household' still uses householdId
+// exactly as before; audienceType='members' uses the normalized join table below
+// instead of a JSON/text array of member ids, so family scoping stays enforceable via
+// composite FKs the same way household membership already is. Multiple saved menus may
+// be active simultaneously now (see the removed exclusivity index below) — "active"
+// means "surface this prominently," not "the only one in effect."
+export const familySavedMenus = pgTable(
+  'family_saved_menus',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    audienceType: text('audience_type').notNull().default('family'),
+    householdId: uuid('household_id'),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    isActive: boolean('is_active').notNull().default(false),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_saved_menus_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'family_saved_menus_household_family_fk',
+      columns: [table.householdId, table.familyId],
+      foreignColumns: [households.id, households.familyId]
+    }).onDelete('cascade'),
+    unique('family_saved_menus_id_family_unique').on(table.id, table.familyId),
+    index('family_saved_menus_family_idx').on(table.familyId),
+    index('family_saved_menus_household_idx').on(table.householdId),
+    index('family_saved_menus_creator_idx').on(table.createdByMemberId),
+    check(
+      'family_saved_menus_name_length',
+      sql`char_length(${table.name}) between 1 and 100 and ${table.name} = btrim(${table.name})`
+    ),
+    check(
+      'family_saved_menus_description_length',
+      sql`${table.description} is null or (char_length(${table.description}) between 1 and 500 and ${table.description} = btrim(${table.description}))`
+    ),
+    check('family_saved_menus_audience_type_allowed', sql`${table.audienceType} in ('family', 'household', 'members')`),
+    // household_id is set if and only if audience_type = 'household' — keeps the two
+    // columns from drifting out of sync with each other.
+    check(
+      'family_saved_menus_household_consistency',
+      sql`(${table.audienceType} = 'household') = (${table.householdId} is not null)`
+    )
+  ]
+);
+
+// Normalized "specific people" audience — one row per targeted member, family-scoped via
+// the same composite-FK pattern household_members already uses. Preferred over a
+// JSON/text array of member ids specifically so family scoping stays DB-enforced and a
+// member leaving the family (or being removed from this list) cleanly disappears.
+export const familySavedMenuMembers = pgTable(
+  'family_saved_menu_members',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    savedMenuId: uuid('saved_menu_id').notNull(),
+    memberId: uuid('member_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_saved_menu_members_menu_family_fk',
+      columns: [table.savedMenuId, table.familyId],
+      foreignColumns: [familySavedMenus.id, familySavedMenus.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_saved_menu_members_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_saved_menu_members_menu_member_unique').on(table.savedMenuId, table.memberId),
+    index('family_saved_menu_members_member_idx').on(table.memberId)
+  ]
+);
+
+export const familySavedMenuMeals = pgTable(
+  'family_saved_menu_meals',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    savedMenuId: uuid('saved_menu_id').notNull(),
+    // 0 = Monday .. 6 = Sunday, matching the Monday-start week convention family_menus
+    // already uses.
+    dayOfWeek: integer('day_of_week').notNull(),
+    mealType: text('meal_type').notNull(),
+    mealName: text('meal_name').notNull(),
+    note: text('note'),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_saved_menu_meals_menu_family_fk',
+      columns: [table.savedMenuId, table.familyId],
+      foreignColumns: [familySavedMenus.id, familySavedMenus.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_saved_menu_meals_menu_day_type_unique').on(table.savedMenuId, table.dayOfWeek, table.mealType),
+    index('family_saved_menu_meals_menu_idx').on(table.savedMenuId),
+    check('family_saved_menu_meals_day_range', sql`${table.dayOfWeek} between 0 and 6`),
+    check('family_saved_menu_meals_type_allowed', sql`${table.mealType} in ('breakfast', 'lunch', 'dinner')`),
+    check(
+      'family_saved_menu_meals_name_length',
+      sql`char_length(${table.mealName}) between 1 and 140 and ${table.mealName} = btrim(${table.mealName})`
+    ),
+    check(
+      'family_saved_menu_meals_note_length',
+      sql`${table.note} is null or (char_length(${table.note}) between 1 and 300 and ${table.note} = btrim(${table.note}))`
+    )
+  ]
+);
