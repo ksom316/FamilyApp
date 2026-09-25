@@ -8,6 +8,7 @@ import { Screen } from '../../components/Screen';
 
 const destinations = [
   { route: 'chat', title: 'Family chat', detail: 'Little notes and conversations' },
+  { route: 'calendar', title: 'Calendar', detail: 'Shared and private family events' },
   { route: 'memories', title: 'Memories', detail: 'Moments worth keeping' },
   { route: 'polls', title: 'Polls', detail: 'Decide things together' },
   { route: 'shopping', title: 'Shopping', detail: 'Collaborative family shopping lists' },

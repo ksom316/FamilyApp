@@ -14,6 +14,8 @@ export type DateTimeFieldProps = {
   minimumDate?: Date;
   placeholder?: string;
   hint?: string;
+  /** Show a date-only picker while continuing to return an ISO timestamp at UTC midnight. */
+  dateOnly?: boolean;
 };
 
 function pad(value: number) {
@@ -23,6 +25,18 @@ function pad(value: number) {
 /** Local (not UTC) `YYYY-MM-DDTHH:mm`, the format `<input type="datetime-local">` expects. */
 function toWebInputValue(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function toWebDateValue(date: Date) {
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+}
+
+function utcDateFromCalendarDate(date: Date) {
+  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+}
+
+function localCalendarDateFromUtc(date: Date) {
+  return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12);
 }
 
 function formatHumanReadable(date: Date) {
@@ -35,7 +49,7 @@ function formatHumanReadable(date: Date) {
  * `@react-native-community/datetimepicker`. Intended to be reused anywhere FamilyApp
  * needs a "pick a date and time" field instead of free-text entry.
  */
-export function DateTimeField({ label, value, onChange, minimumDate, placeholder = 'Choose a date and time', hint }: DateTimeFieldProps) {
+export function DateTimeField({ label, value, onChange, minimumDate, placeholder = 'Choose a date and time', hint, dateOnly = false }: DateTimeFieldProps) {
   const scheme = useColorScheme();
   const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
   const date = value ? new Date(value) : null;
@@ -49,17 +63,23 @@ export function DateTimeField({ label, value, onChange, minimumDate, placeholder
       onChange(null);
       return;
     }
-    const parsed = new Date(rawValue);
+    const parsed = dateOnly ? new Date(`${rawValue}T00:00:00.000Z`) : new Date(rawValue);
     if (!Number.isNaN(parsed.getTime())) onChange(parsed.toISOString());
   }
 
   function openNativePicker() {
-    setDraftDate(date ?? minimumDate ?? new Date(Date.now() + 60 * 60 * 1000));
+    const initial = date ?? minimumDate ?? new Date(Date.now() + 60 * 60 * 1000);
+    setDraftDate(dateOnly ? localCalendarDateFromUtc(initial) : initial);
     setStep(Platform.OS === 'ios' ? 'ios' : 'date');
   }
 
   function handleAndroidDateChange(event: DateTimePickerEvent, selected?: Date) {
     if (event.type !== 'set' || !selected) {
+      setStep(null);
+      return;
+    }
+    if (dateOnly) {
+      onChange(utcDateFromCalendarDate(selected).toISOString());
       setStep(null);
       return;
     }
@@ -85,9 +105,9 @@ export function DateTimeField({ label, value, onChange, minimumDate, placeholder
         <AppText variant="label" style={styles.label}>{label}</AppText>
         <View style={styles.row}>
           {createElement('input', {
-            type: 'datetime-local',
-            value: date ? toWebInputValue(date) : '',
-            min: minimumDate ? toWebInputValue(minimumDate) : undefined,
+            type: dateOnly ? 'date' : 'datetime-local',
+            value: date ? (dateOnly ? toWebDateValue(date) : toWebInputValue(date)) : '',
+            min: minimumDate ? (dateOnly ? toWebDateValue(minimumDate) : toWebInputValue(minimumDate)) : undefined,
             onChange: (event: { target: { value: string } }) => handleWebChange(event.target.value),
             style: {
               backgroundColor: theme.input,
@@ -119,7 +139,9 @@ export function DateTimeField({ label, value, onChange, minimumDate, placeholder
           onPress={openNativePicker}
           style={[styles.nativeField, { backgroundColor: theme.input, borderColor: theme.border }]}
         >
-          <AppText variant="body" tone={date ? 'text' : 'mutedText'}>{date ? formatHumanReadable(date) : placeholder}</AppText>
+          <AppText variant="body" tone={date ? 'text' : 'mutedText'}>
+            {date ? (dateOnly ? date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : formatHumanReadable(date)) : placeholder}
+          </AppText>
         </Pressable>
         {date ? <Button label="Clear" variant="quiet" onPress={() => onChange(null)} /> : null}
       </View>
@@ -137,14 +159,14 @@ export function DateTimeField({ label, value, onChange, minimumDate, placeholder
         <View style={[styles.iosPicker, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <DateTimePicker
             value={draftDate}
-            mode="datetime"
+            mode={dateOnly ? 'date' : 'datetime'}
             display="spinner"
             minimumDate={minimumDate}
             onChange={(_event, selected) => { if (selected) setDraftDate(selected); }}
           />
           <View style={styles.iosActions}>
             <Button label="Cancel" variant="quiet" onPress={() => setStep(null)} />
-            <Button label="Done" onPress={() => { onChange(draftDate.toISOString()); setStep(null); }} />
+            <Button label="Done" onPress={() => { onChange(dateOnly ? utcDateFromCalendarDate(draftDate).toISOString() : draftDate.toISOString()); setStep(null); }} />
           </View>
         </View>
       ) : null}

@@ -240,6 +240,86 @@ export const familyEvents = pgTable(
   ]
 );
 
+export const familyCalendarEvents = pgTable(
+  'family_calendar_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    createdByMemberId: uuid('created_by_member_id').notNull(),
+    audienceType: text('audience_type').notNull().default('family'),
+    householdId: uuid('household_id'),
+    title: text('title').notNull(),
+    description: text('description'),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }),
+    location: text('location'),
+    allDay: boolean('all_day').notNull().default(false),
+    ...timestamps
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_calendar_events_creator_family_fk',
+      columns: [table.createdByMemberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'family_calendar_events_household_family_fk',
+      columns: [table.householdId, table.familyId],
+      foreignColumns: [households.id, households.familyId]
+    }).onDelete('cascade'),
+    unique('family_calendar_events_id_family_unique').on(table.id, table.familyId),
+    index('family_calendar_events_family_starts_at_idx').on(table.familyId, table.startsAt),
+    index('family_calendar_events_family_ends_at_idx').on(table.familyId, table.endsAt),
+    index('family_calendar_events_household_idx').on(table.householdId),
+    index('family_calendar_events_creator_idx').on(table.createdByMemberId),
+    check(
+      'family_calendar_events_title_length',
+      sql`char_length(${table.title}) between 1 and 140 and ${table.title} = btrim(${table.title})`
+    ),
+    check(
+      'family_calendar_events_description_length',
+      sql`${table.description} is null or (char_length(${table.description}) between 1 and 2000 and ${table.description} = btrim(${table.description}))`
+    ),
+    check(
+      'family_calendar_events_location_length',
+      sql`${table.location} is null or (char_length(${table.location}) between 1 and 300 and ${table.location} = btrim(${table.location}))`
+    ),
+    check('family_calendar_events_audience_type_allowed', sql`${table.audienceType} in ('family', 'household', 'members')`),
+    check(
+      'family_calendar_events_household_consistency',
+      sql`(${table.audienceType} = 'household') = (${table.householdId} is not null)`
+    ),
+    check('family_calendar_events_end_after_start', sql`${table.endsAt} is null or ${table.endsAt} > ${table.startsAt}`)
+  ]
+);
+
+export const familyCalendarEventMembers = pgTable(
+  'family_calendar_event_members',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    familyId: uuid('family_id').notNull(),
+    eventId: uuid('event_id').notNull(),
+    memberId: uuid('member_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      name: 'family_calendar_event_members_event_family_fk',
+      columns: [table.eventId, table.familyId],
+      foreignColumns: [familyCalendarEvents.id, familyCalendarEvents.familyId]
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'family_calendar_event_members_member_family_fk',
+      columns: [table.memberId, table.familyId],
+      foreignColumns: [familyMembers.id, familyMembers.familyId]
+    }).onDelete('cascade'),
+    uniqueIndex('family_calendar_event_members_event_member_unique').on(table.eventId, table.memberId),
+    index('family_calendar_event_members_member_idx').on(table.memberId)
+  ]
+);
+
 export const familyTasks = pgTable(
   'family_tasks',
   {

@@ -56,15 +56,15 @@ export async function getFamilyPlans(familyId: string) {
 }
 
 export async function createFamilyEvent(familyId: string, input: EventInput) {
-  return readResponse<{ event: FamilyEvent }>(await apiFetch(`/families/${encodeURIComponent(familyId)}/events`, jsonRequest('POST', input)));
+  return readResponse<{ event: FamilyEvent }>(await apiFetch(`/families/${encodeURIComponent(familyId)}/plan-events`, jsonRequest('POST', input)));
 }
 
 export async function updateFamilyEvent(familyId: string, eventId: string, input: EventInput) {
-  return readResponse<{ event: FamilyEvent }>(await apiFetch(`/families/${encodeURIComponent(familyId)}/events/${encodeURIComponent(eventId)}`, jsonRequest('PATCH', input)));
+  return readResponse<{ event: FamilyEvent }>(await apiFetch(`/families/${encodeURIComponent(familyId)}/plan-events/${encodeURIComponent(eventId)}`, jsonRequest('PATCH', input)));
 }
 
 export async function deleteFamilyEvent(familyId: string, eventId: string) {
-  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/events/${encodeURIComponent(eventId)}`, { method: 'DELETE' });
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/plan-events/${encodeURIComponent(eventId)}`, { method: 'DELETE' });
   if (!response.ok) await readResponse(response);
 }
 

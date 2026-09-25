@@ -5,6 +5,14 @@ import { createDatabase } from '@familyapp/db';
 import { createAiProvider } from './ai-provider';
 import { createAuth, getTrustedOrigins } from './auth';
 import { BrainServiceError, respondToBrainMessage } from './brain-service';
+import {
+  CalendarServiceError,
+  createCalendarEvent,
+  deleteCalendarEvent,
+  getCalendarEvent,
+  listCalendarEvents,
+  updateCalendarEvent
+} from './calendar-service';
 import { ChatServiceError, createFamilyMessage, listFamilyMessages } from './chat-service';
 import { acceptFamilyInvitation, createFamily, createFamilyInvitation, FamilyServiceError, listFamilyMembers, listFamilyMemberships } from './family-service';
 import {
@@ -922,7 +930,7 @@ app.get('/families/:familyId/plans', sessionMiddleware, async (c) => {
   }
 });
 
-app.post('/families/:familyId/events', sessionMiddleware, async (c) => {
+app.post('/families/:familyId/plan-events', sessionMiddleware, async (c) => {
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
@@ -934,7 +942,7 @@ app.post('/families/:familyId/events', sessionMiddleware, async (c) => {
   }
 });
 
-app.patch('/families/:familyId/events/:eventId', sessionMiddleware, async (c) => {
+app.patch('/families/:familyId/plan-events/:eventId', sessionMiddleware, async (c) => {
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
@@ -946,7 +954,7 @@ app.patch('/families/:familyId/events/:eventId', sessionMiddleware, async (c) =>
   }
 });
 
-app.delete('/families/:familyId/events/:eventId', sessionMiddleware, async (c) => {
+app.delete('/families/:familyId/plan-events/:eventId', sessionMiddleware, async (c) => {
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
@@ -954,6 +962,90 @@ app.delete('/families/:familyId/events/:eventId', sessionMiddleware, async (c) =
     return c.body(null, 204);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof PlanServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/events', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const events = await listCalendarEvents(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      c.req.query('from'),
+      c.req.query('to')
+    );
+    return c.json({ events });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof CalendarServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/events/:eventId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const event = await getCalendarEvent(
+      createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('eventId')
+    );
+    return c.json({ event });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof CalendarServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/events', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const event = await createCalendarEvent(
+      createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), await c.req.json()
+    );
+    return c.json({ event }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof CalendarServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.patch('/families/:familyId/events/:eventId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const event = await updateCalendarEvent(
+      createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('eventId'), await c.req.json()
+    );
+    return c.json({ event });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof CalendarServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/events/:eventId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await deleteCalendarEvent(
+      createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('eventId')
+    );
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof CalendarServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
     throw error;
   }
 });
