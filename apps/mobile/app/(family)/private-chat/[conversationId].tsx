@@ -1,3 +1,4 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -7,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
-  useColorScheme,
   useWindowDimensions,
   View,
   type NativeScrollEvent,
@@ -15,12 +15,13 @@ import {
   type TextInputKeyPressEventData
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { MemberAvatar } from '../../../components/MemberAvatar';
+import { FadeInView } from '../../../components/Motion';
 import { Screen } from '../../../components/Screen';
 import { useCurrentFamily } from '../../../lib/family-context';
 import { requestAttentionRefresh } from '../../../lib/navigation-attention';
@@ -58,8 +59,7 @@ export default function PrivateConversationScreen() {
   const family = useCurrentFamily();
   const params = useLocalSearchParams<{ conversationId: string }>();
   const conversationId = Array.isArray(params.conversationId) ? params.conversationId[0] : params.conversationId;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
   const [conversation, setConversation] = useState<PrivateConversation | null>(null);
@@ -68,6 +68,7 @@ export default function PrivateConversationScreen() {
   const [draft, setDraft] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [animatedMessageId, setAnimatedMessageId] = useState<string | null>(null);
   const [appState, setAppState] = useState(AppState.currentState);
   const focusedRef = useRef(false);
   const refreshInFlightRef = useRef(false);
@@ -78,6 +79,7 @@ export default function PrivateConversationScreen() {
   // only decides whether that call also pokes the sidebar's attention badge, so opening a
   // conversation doesn't trigger a full attention-count refetch every 5s for no reason.
   const lastNotifiedMessageIdRef = useRef<string | null>(null);
+  const knownMessageIdsRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', setAppState);
@@ -90,6 +92,12 @@ export default function PrivateConversationScreen() {
     try {
       const result = await getPrivateMessages(family.familyId, conversationId);
       if (!focusedRef.current) return;
+      const knownIds = knownMessageIdsRef.current;
+      if (knownIds) {
+        const newestIncoming = [...result.messages].reverse().find((message) => !knownIds.has(message.id));
+        if (newestIncoming) setAnimatedMessageId(newestIncoming.id);
+      }
+      knownMessageIdsRef.current = new Set([...(knownIds ?? []), ...result.messages.map((message) => message.id)]);
       setConversation(result.conversation);
       setMessages((current) => mergeMessages(current, result.messages));
       setLoadError(null);
@@ -134,6 +142,8 @@ export default function PrivateConversationScreen() {
       const message = await sendPrivateMessage(family.familyId, conversationId, text);
       shouldAutoScrollRef.current = true;
       setMessages((current) => mergeMessages(current, [message]));
+      knownMessageIdsRef.current?.add(message.id);
+      setAnimatedMessageId(message.id);
       setDraft('');
     } catch (caught) {
       setSendError(caught instanceof PrivateChatApiError ? caught.message : 'Your private message could not be sent.');
@@ -212,7 +222,7 @@ export default function PrivateConversationScreen() {
               ) : messages.map((message) => {
                 const isMine = message.senderMemberId === family.id;
                 return (
-                  <View key={message.id} style={[styles.messageRow, isMine && styles.myMessageRow]}>
+                  <FadeInView key={message.id} enabled={message.id === animatedMessageId} distance={5} style={[styles.messageRow, isMine && styles.myMessageRow]}>
                     {!isMine ? <MemberAvatar member={{ ...message.sender, memberId: message.sender.memberId }} familyId={family.familyId} size={34} /> : null}
                     <View style={[styles.messageCluster, { maxWidth: isDesktop ? 620 : '84%' }, isMine && styles.myMessageCluster]}>
                       <View style={[
@@ -226,7 +236,7 @@ export default function PrivateConversationScreen() {
                         {messageTime(message.createdAt)}{isMine ? ' · You' : ''}
                       </AppText>
                     </View>
-                  </View>
+                  </FadeInView>
                 );
               })}
             </ScrollView>

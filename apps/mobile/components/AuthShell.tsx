@@ -1,13 +1,13 @@
-import { KeyboardAvoidingView, Platform, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { useAppTheme } from '../lib/app-theme';
+import { KeyboardAvoidingView, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { radius, spacing } from '@familyapp/config';
 import { AppText } from './AppText';
 import { BrandMark } from './BrandMark';
 import { Card } from './Card';
 import { Screen } from './Screen';
 
 export function AuthShell({ title, subtitle, children, footer }: { title: string; subtitle: string; children: React.ReactNode; footer: React.ReactNode }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
 

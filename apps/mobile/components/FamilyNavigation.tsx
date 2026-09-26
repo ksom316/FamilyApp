@@ -1,12 +1,14 @@
+import { useAppTheme } from '../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Pressable, ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
+import { AppState, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, usePathname } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from './AppText';
 import { BrandMark } from './BrandMark';
 import { Button } from './Button';
+import { PressableScale } from './Motion';
 import { MemberAvatar } from './MemberAvatar';
 import { authClient } from '../lib/auth-client';
 import type { FamilyMembership } from '../lib/families';
@@ -75,8 +77,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
 
 export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
   const { data: session } = authClient.useSession();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const pathname = usePathname();
   const [counts, setCounts] = useState<NavigationAttentionCounts>(EMPTY_NAVIGATION_ATTENTION_COUNTS);
   const [identity, setIdentity] = useState<ProfileIdentity | null>(null);
@@ -128,7 +129,7 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
   }, [loadCounts, loadIdentity]);
 
   return (
-    <View style={[styles.sidebar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <View style={[styles.sidebar, { backgroundColor: theme.navigationBackground, borderColor: theme.border }]}>
       <BrandMark compact />
       <View style={[styles.familyBadge, { backgroundColor: theme.primarySoft }]}>
         <AppText variant="caption" tone="primary">YOUR FAMILY</AppText>
@@ -148,7 +149,7 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
               const countKey = BADGE_COUNT_KEYS[item.name];
               const badgeCount = countKey ? counts[countKey] : 0;
               return (
-                <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => router.navigate(`/(family)/${item.name}` as never)} style={[styles.sideLink, active && { backgroundColor: theme.primarySoft }]}>
+                <PressableScale key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => router.navigate(`/(family)/${item.name}` as never)} pressedScale={0.985} style={[styles.sideLink, active && { backgroundColor: theme.primarySoft }]}>
                   <AppText variant="body" tone={active ? 'primary' : 'mutedText'} style={styles.navMark}>{item.mark}</AppText>
                   <AppText variant="label" tone={active ? 'primary' : 'text'} style={styles.navLabel}>{item.label}</AppText>
                   {badgeCount > 0 ? (
@@ -156,14 +157,14 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
                       <AppText variant="caption" style={styles.navBadgeText}>{badgeCount > 9 ? '9+' : badgeCount}</AppText>
                     </View>
                   ) : null}
-                </Pressable>
+                </PressableScale>
               );
             })}
           </View>
         ))}
       </ScrollView>
       <View style={[styles.profile, { borderColor: theme.border }]}>
-        <Pressable accessibilityRole="button" onPress={() => router.navigate('/(family)/profile' as never)} style={styles.profileTouchArea}>
+        <PressableScale accessibilityRole="button" onPress={() => router.navigate('/(family)/profile' as never)} style={styles.profileTouchArea}>
           <MemberAvatar
             member={{
               displayName: session?.user.name,
@@ -177,7 +178,7 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
             size={40}
           />
           <View style={styles.profileCopy}><AppText variant="label" numberOfLines={1}>{session?.user.name ?? 'Your account'}</AppText><AppText variant="caption" tone="mutedText" numberOfLines={1}>{session?.user.email ?? 'Family member'}</AppText></View>
-        </Pressable>
+        </PressableScale>
         <Button label="Log out" onPress={() => void authClient.signOut()} variant="quiet" />
       </View>
     </View>
@@ -185,11 +186,10 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
 }
 
 export function MobileFamilyHeader({ family }: { family: FamilyMembership }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   return (
-    <View style={[styles.mobileHeader, { borderColor: theme.border }]}>
+    <View style={[styles.mobileHeader, { backgroundColor: theme.navigationBackground, borderColor: theme.border }]}>
       <BrandMark compact />
       <View style={styles.mobileHeaderRight}>
         <AppText variant="label" numberOfLines={1} style={styles.mobileFamilyName}>{family.familyName}</AppText>
@@ -201,8 +201,7 @@ export function MobileFamilyHeader({ family }: { family: FamilyMembership }) {
 
 export function MobileFamilyNavigation() {
   const insets = useSafeAreaInsets();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const pathname = usePathname();
   const items = [
     { name: 'home', label: 'Home', mark: '⌂' },
@@ -212,7 +211,7 @@ export function MobileFamilyNavigation() {
   ];
 
   return (
-    <View style={[styles.bottomNav, { backgroundColor: theme.surface, borderColor: theme.border, paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+    <View style={[styles.bottomNav, { backgroundColor: theme.navigationBackground, borderColor: theme.border, paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       {items.map((item) => {
         // Same fix as the desktop sidebar: match the top-level route segment only, so a
         // nested segment sharing a name with another tab (e.g. "/chat/family") can't also
@@ -220,10 +219,10 @@ export function MobileFamilyNavigation() {
         const topLevelSegment = pathname.split('/')[1] ?? '';
         const active = topLevelSegment === item.name || (item.name === 'more' && ['chat', 'private-chat', 'calendar', 'memories', 'polls', 'shopping', 'menu', 'capsules', 'location', 'check-ins', 'emergency', 'notifications', 'tasks', 'brain', 'invite'].includes(topLevelSegment));
         return (
-          <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={item.label} onPress={() => router.navigate(`/(family)/${item.name}` as never)} style={[styles.bottomItem, active && { backgroundColor: theme.primarySoft }]}>
+          <PressableScale key={item.name} accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={item.label} onPress={() => router.navigate(`/(family)/${item.name}` as never)} pressedScale={0.96} style={[styles.bottomItem, active && { backgroundColor: theme.primarySoft }]}>
             <AppText variant="body" tone={active ? 'primary' : 'mutedText'}>{item.mark}</AppText>
             <AppText variant="caption" tone={active ? 'primary' : 'mutedText'}>{item.label}</AppText>
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>

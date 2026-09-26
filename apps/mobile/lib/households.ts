@@ -1,6 +1,15 @@
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 
-export type HouseholdMember = { memberId: string; displayName: string; avatar: string | null; role: 'owner' | 'guardian' | 'member' };
+export type HouseholdMember = {
+  memberId: string;
+  displayName: string;
+  avatar: string | null;
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
+  role: 'owner' | 'guardian' | 'member';
+};
 
 export type Household = {
   id: string;

@@ -1,20 +1,19 @@
+import { useAppTheme } from '../lib/app-theme';
 import { useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from './AppText';
 import { Button } from './Button';
 import { Card } from './Card';
+import { DateTimeField } from './DateTimeField';
 import { TextField } from './TextField';
 import { createFamilyMemory, MemoriesApiError, type FamilyMemory } from '../lib/memories';
 
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function todayValue() {
+function todayIso() {
   const date = new Date();
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())).toISOString();
 }
 
 export function MemoryEditor({ familyId, embedded = false, onCancel, onSaved, onSavingChange }: {
@@ -24,11 +23,10 @@ export function MemoryEditor({ familyId, embedded = false, onCancel, onSaved, on
   onSaved: (memory: FamilyMemory) => Promise<void> | void;
   onSavingChange?: (saving: boolean) => void;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [photo, setPhoto] = useState<{ uri: string; name: string; type: string } | null>(null);
   const [title, setTitle] = useState('');
-  const [memoryDate, setMemoryDate] = useState(todayValue());
+  const [memoryDate, setMemoryDate] = useState<string | null>(todayIso());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -49,14 +47,14 @@ export function MemoryEditor({ familyId, embedded = false, onCancel, onSaved, on
   async function save() {
     if (savingRef.current) return;
     if (!photo) { setError('Choose a photo to share.'); return; }
-    if (!DATE_PATTERN.test(memoryDate)) { setError('Use a valid date, like 2026-07-04.'); return; }
+    if (!memoryDate) { setError('Choose a date for this memory.'); return; }
 
     savingRef.current = true;
     setSaving(true);
     onSavingChange?.(true);
     setError(null);
     try {
-      const memory = await createFamilyMemory(familyId, { title: title.trim() || undefined, memoryDate, file: photo });
+      const memory = await createFamilyMemory(familyId, { title: title.trim() || undefined, memoryDate: memoryDate.slice(0, 10), file: photo });
       await onSaved(memory);
     } catch (caught) {
       setError(caught instanceof MemoriesApiError ? caught.message : 'That memory could not be uploaded.');
@@ -81,7 +79,7 @@ export function MemoryEditor({ familyId, embedded = false, onCancel, onSaved, on
       </Pressable>
       {photo ? <Button label="Choose a different photo" variant="quiet" onPress={() => void pickPhoto()} /> : null}
       <TextField label="Title (optional)" value={title} onChangeText={setTitle} maxLength={120} placeholder="A caption for this moment" />
-      <TextField label="Memory date" value={memoryDate} onChangeText={setMemoryDate} hint="YYYY-MM-DD" autoCapitalize="none" />
+      <DateTimeField label="Memory date" value={memoryDate} onChange={setMemoryDate} dateOnly />
       {error ? <AppText variant="caption" tone="danger" style={styles.formError}>{error}</AppText> : null}
       <View style={styles.formActions}>
         <Button label="Cancel" variant="quiet" onPress={onCancel} disabled={saving} />

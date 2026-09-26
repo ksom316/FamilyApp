@@ -1,12 +1,14 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { MemberAvatar } from '../../../components/MemberAvatar';
+import { SuccessPulse } from '../../../components/Motion';
 import { Screen } from '../../../components/Screen';
 import { TaskEditor } from '../../../components/TaskEditor';
 import { useCurrentFamily } from '../../../lib/family-context';
@@ -39,8 +41,7 @@ export default function TaskDetailScreen() {
   const family = useCurrentFamily();
   const params = useLocalSearchParams<{ taskId: string }>();
   const taskId = Array.isArray(params.taskId) ? params.taskId[0] : params.taskId;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export default function TaskDetailScreen() {
   const [completing, setCompleting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showCompletionPulse, setShowCompletionPulse] = useState(false);
 
   const focusedRef = useRef(false);
   const refreshInFlightRef = useRef(false);
@@ -92,6 +94,7 @@ export default function TaskDetailScreen() {
     try {
       const next = await setTaskCompletion(family.familyId, taskId, !task.myCompletedAt);
       setTask(next);
+      setShowCompletionPulse(Boolean(next.myCompletedAt));
     } catch (err) {
       setActionError(err instanceof TaskApiError ? err.message : 'That could not be updated.');
     } finally {
@@ -182,6 +185,12 @@ export default function TaskDetailScreen() {
           {task.completedAssignees} of {task.totalAssignees} completed
         </AppText>
 
+        {task.myCompletedAt && showCompletionPulse ? (
+          <SuccessPulse style={styles.completedConfirmation}>
+            <AppText variant="label" tone="success">&#10003; Marked as done</AppText>
+          </SuccessPulse>
+        ) : null}
+
         {actionError ? <AppText variant="caption" tone="danger" style={styles.formError}>{actionError}</AppText> : null}
 
         {task.isAssignedToMe ? (
@@ -228,6 +237,7 @@ export default function TaskDetailScreen() {
 const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl, paddingTop: spacing.xl },
   backLink: { marginBottom: spacing.md },
+  completedConfirmation: { alignSelf: 'flex-start', marginTop: spacing.md },
   messageCard: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
   loading: { alignItems: 'center', paddingVertical: spacing.xxxl },
   loadingText: { marginTop: spacing.md },

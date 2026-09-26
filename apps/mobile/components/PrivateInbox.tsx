@@ -1,7 +1,8 @@
+import { useAppTheme } from '../lib/app-theme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, AppState, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from './AppText';
 import { Card } from './Card';
@@ -40,8 +41,7 @@ export function PrivateInbox({ familyId, currentMemberId, active }: {
   currentMemberId: string;
   active: boolean;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [members, setMembers] = useState<FamilyMember[] | null>(null);
   const [conversations, setConversations] = useState<PrivateConversationInboxItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);

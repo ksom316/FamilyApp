@@ -1,13 +1,15 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
 import { AuthorizedImage } from '../../../components/AuthorizedImage';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { DateTimeField } from '../../../components/DateTimeField';
 import { Screen } from '../../../components/Screen';
 import { TextField } from '../../../components/TextField';
 import { useCurrentFamily } from '../../../lib/family-context';
@@ -21,8 +23,6 @@ import {
   updateFamilyMemory,
   type FamilyMemory
 } from '../../../lib/memories';
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function formatMemoryDate(value: string) {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -46,8 +46,7 @@ export default function MemoryDetailScreen() {
   const family = useCurrentFamily();
   const params = useLocalSearchParams<{ memoryId: string }>();
   const memoryId = Array.isArray(params.memoryId) ? params.memoryId[0] : params.memoryId;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [memory, setMemory] = useState<FamilyMemory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -197,7 +196,7 @@ export default function MemoryDetailScreen() {
           </View>
 
           <View style={styles.personRow}>
-            <Avatar name={memory.sharedBy.displayName} imageUrl={memory.sharedBy.avatar} size={28} />
+            <MemberAvatar member={memory.sharedBy} familyId={family.familyId} size={28} />
             <AppText variant="caption" tone="mutedText">Shared by {memory.sharedBy.displayName}</AppText>
           </View>
 
@@ -222,19 +221,19 @@ function MemoryEditor({ memory, familyId, onCancel, onSaved }: {
   onSaved: (memory: FamilyMemory) => void;
 }) {
   const [title, setTitle] = useState(memory.title ?? '');
-  const [memoryDate, setMemoryDate] = useState(memory.memoryDate);
+  const [memoryDate, setMemoryDate] = useState<string | null>(`${memory.memoryDate}T00:00:00.000Z`);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function save() {
-    if (!DATE_PATTERN.test(memoryDate)) {
-      setError('Use a valid date, like 2026-07-04.');
+    if (!memoryDate) {
+      setError('Choose a date for this memory.');
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      const updated = await updateFamilyMemory(familyId, memory.id, { title: title.trim() || null, memoryDate });
+      const updated = await updateFamilyMemory(familyId, memory.id, { title: title.trim() || null, memoryDate: memoryDate.slice(0, 10) });
       onSaved(updated);
     } catch (err) {
       setError(err instanceof MemoriesApiError ? err.message : 'This memory could not be saved.');
@@ -247,7 +246,7 @@ function MemoryEditor({ memory, familyId, onCancel, onSaved }: {
     <Card elevated style={styles.editorCard}>
       <AppText variant="heading">Edit memory</AppText>
       <TextField label="Title" value={title} onChangeText={setTitle} maxLength={120} placeholder="A caption for this moment" />
-      <TextField label="Memory date" value={memoryDate} onChangeText={setMemoryDate} hint="YYYY-MM-DD" autoCapitalize="none" />
+      <DateTimeField label="Memory date" value={memoryDate} onChange={setMemoryDate} dateOnly />
       {error ? <AppText variant="caption" tone="danger" style={styles.formError}>{error}</AppText> : null}
       <View style={styles.formActions}>
         <Button label="Cancel" variant="quiet" onPress={onCancel} disabled={saving} />

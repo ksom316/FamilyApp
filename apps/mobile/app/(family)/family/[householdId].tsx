@@ -1,10 +1,11 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
@@ -39,8 +40,7 @@ export default function HouseholdDetailScreen() {
   const family = useCurrentFamily();
   const params = useLocalSearchParams<{ householdId: string }>();
   const householdId = Array.isArray(params.householdId) ? params.householdId[0] : params.householdId;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const canManage = family.role === 'owner' || family.role === 'guardian';
 
   const [detail, setDetail] = useState<HouseholdDetail | null>(null);
@@ -194,7 +194,7 @@ export default function HouseholdDetailScreen() {
         <View style={styles.memberList}>
           {detail.members.map((member) => (
             <Card key={member.memberId} style={styles.memberCard}>
-              <Avatar name={member.displayName} imageUrl={member.avatar} size={44} />
+              <MemberAvatar member={member} familyId={family.familyId} size={44} />
               <View style={styles.memberCopy}>
                 <AppText variant="label">{member.displayName}</AppText>
                 <AppText variant="caption" tone="mutedText">{member.role === 'owner' ? 'Family creator' : member.role === 'guardian' ? 'Guardian' : 'Family member'}</AppText>
@@ -253,8 +253,7 @@ function AddMemberPicker({ familyId, householdId, candidates, onCancel, onAdded 
   onCancel: () => void;
   onAdded: (detail: HouseholdDetail) => void;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

@@ -1,13 +1,15 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
 import { AuthorizedImage } from '../../../components/AuthorizedImage';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { FadeInView, PressableScale, SuccessPulse } from '../../../components/Motion';
 import { MemoryEditor } from '../../../components/MemoryEditor';
 import { Screen } from '../../../components/Screen';
 import { useCurrentFamily } from '../../../lib/family-context';
@@ -42,11 +44,11 @@ function groupByMonth(memories: FamilyMemory[]) {
 export default function MemoriesScreen() {
   const family = useCurrentFamily();
   const { width } = useWindowDimensions();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [memories, setMemories] = useState<FamilyMemory[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [showSavedConfirmation, setShowSavedConfirmation] = useState(false);
   const [view, setView] = useState<'gallery' | 'timeline'>('gallery');
 
   const load = useCallback(async () => {
@@ -98,8 +100,18 @@ export default function MemoriesScreen() {
         <MemoryEditor
           familyId={family.familyId}
           onCancel={() => setAdding(false)}
-          onSaved={async () => { setAdding(false); await load(); }}
+          onSaved={async () => { setAdding(false); await load(); setShowSavedConfirmation(true); }}
         />
+      ) : null}
+
+      {showSavedConfirmation ? (
+        <FadeInView distance={4} style={styles.confirmationWrap}>
+          <Card style={[styles.messageCard, { backgroundColor: theme.successSoft }]}>
+            <SuccessPulse><AppText variant="heading" tone="success">&#10003;</AppText></SuccessPulse>
+            <AppText variant="body" tone="success" style={styles.confirmationCopy}>Memory saved to your family album.</AppText>
+            <Button label="Dismiss" variant="quiet" onPress={() => setShowSavedConfirmation(false)} />
+          </Card>
+        </FadeInView>
       ) : null}
 
       {error ? (
@@ -124,13 +136,13 @@ export default function MemoriesScreen() {
           </View>
 
           {view === 'gallery' ? (
-            <MemoryGrid memories={memories} contentWidth={contentWidth} onOpen={openMemory} onToggleFavorite={toggleFavorite} />
+            <MemoryGrid memories={memories} contentWidth={contentWidth} onOpen={openMemory} onToggleFavorite={toggleFavorite} familyId={family.familyId} />
           ) : (
             <View style={styles.timeline}>
               {groups.map((group) => (
                 <View key={group.key} style={styles.timelineGroup}>
                   <AppText variant="heading" style={styles.timelineHeading}>{group.label}</AppText>
-                  <MemoryGrid memories={group.items} contentWidth={contentWidth} onOpen={openMemory} onToggleFavorite={toggleFavorite} />
+                  <MemoryGrid memories={group.items} contentWidth={contentWidth} onOpen={openMemory} onToggleFavorite={toggleFavorite} familyId={family.familyId} />
                 </View>
               ))}
             </View>
@@ -153,8 +165,7 @@ export default function MemoriesScreen() {
 }
 
 function Segment({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       accessibilityRole="tab"
@@ -167,11 +178,12 @@ function Segment({ label, active, onPress }: { label: string; active: boolean; o
   );
 }
 
-function MemoryGrid({ memories, contentWidth, onOpen, onToggleFavorite }: {
+function MemoryGrid({ memories, contentWidth, onOpen, onToggleFavorite, familyId }: {
   memories: FamilyMemory[];
   contentWidth: number;
   onOpen: (memory: FamilyMemory) => void;
   onToggleFavorite: (memory: FamilyMemory) => void;
+  familyId: string;
 }) {
   const columns = contentWidth >= 900 ? 4 : contentWidth >= 620 ? 3 : contentWidth >= 380 ? 2 : 1;
   const gap = spacing.md;
@@ -186,17 +198,17 @@ function MemoryGrid({ memories, contentWidth, onOpen, onToggleFavorite }: {
           width={cardWidth}
           onOpen={() => onOpen(memory)}
           onToggleFavorite={() => onToggleFavorite(memory)}
+          familyId={familyId}
         />
       ))}
     </View>
   );
 }
 
-function MemoryCard({ memory, width, onOpen, onToggleFavorite }: { memory: FamilyMemory; width: number; onOpen: () => void; onToggleFavorite: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+function MemoryCard({ memory, width, onOpen, onToggleFavorite, familyId }: { memory: FamilyMemory; width: number; onOpen: () => void; onToggleFavorite: () => void; familyId: string }) {
+  const { colors: theme } = useAppTheme();
   return (
-    <Pressable accessibilityRole="button" onPress={onOpen} style={{ width }}>
+    <PressableScale accessibilityRole="button" onPress={onOpen} style={{ width }}>
       <Card padded={false} style={styles.card}>
         <View style={styles.imageWrap}>
           <AuthorizedImage path={memoryMediaPath(memory.familyId, memory.id)} style={styles.image} />
@@ -216,12 +228,12 @@ function MemoryCard({ memory, width, onOpen, onToggleFavorite }: { memory: Famil
             : <AppText variant="label" tone="mutedText" numberOfLines={1}>Untitled memory</AppText>}
           <AppText variant="caption" tone="mutedText" style={styles.cardDate}>{formatMemoryDate(memory.memoryDate)}</AppText>
           <View style={styles.personRow}>
-            <Avatar name={memory.sharedBy.displayName} imageUrl={memory.sharedBy.avatar} size={18} />
+            <MemberAvatar member={memory.sharedBy} familyId={familyId} size={18} />
             <AppText variant="caption" tone="mutedText" numberOfLines={1}>{memory.sharedBy.displayName}</AppText>
           </View>
         </View>
       </Card>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -232,6 +244,8 @@ const styles = StyleSheet.create({
   title: { marginTop: spacing.xs },
   subtitle: { marginTop: spacing.sm },
   messageCard: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.lg },
+  confirmationWrap: { marginTop: spacing.lg },
+  confirmationCopy: { flex: 1 },
   loading: { alignItems: 'center', paddingVertical: spacing.xxxl },
   loadingText: { marginTop: spacing.md },
   segmentRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },

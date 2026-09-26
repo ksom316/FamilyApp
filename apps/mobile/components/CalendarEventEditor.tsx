@@ -1,6 +1,7 @@
+import { useAppTheme } from '../lib/app-theme';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from './AppText';
 import { Button } from './Button';
@@ -42,8 +43,7 @@ export function CalendarEventEditor({ familyId, event, households, members, onCa
   onCancel: () => void;
   onSaved: (event: CalendarEvent) => Promise<void> | void;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [title, setTitle] = useState(event?.title ?? '');
   const [description, setDescription] = useState(event?.description ?? '');
   const [location, setLocation] = useState(event?.location ?? '');
@@ -157,8 +157,7 @@ export function CalendarEventEditor({ familyId, event, households, members, onCa
 }
 
 function AudienceChoice({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.choice, { backgroundColor: selected ? theme.primarySoft : theme.input, borderColor: selected ? theme.primary : theme.border }]}><AppText variant="caption" tone={selected ? 'primary' : 'text'}>{label}</AppText></Pressable>;
 }
 

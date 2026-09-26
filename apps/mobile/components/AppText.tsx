@@ -1,5 +1,6 @@
-import { StyleSheet, Text, useColorScheme, type TextProps, type TextStyle } from 'react-native';
-import { colors, typography, type Theme } from '@familyapp/config';
+import { useAppTheme } from '../lib/app-theme';
+import { StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
+import { typography } from '@familyapp/config';
 
 type TextVariant = 'display' | 'title' | 'heading' | 'body' | 'label' | 'caption' | 'eyebrow';
 type TextTone = 'text' | 'mutedText' | 'primary' | 'secondary' | 'success' | 'danger' | 'textOnPrimary';
@@ -7,8 +8,7 @@ type TextTone = 'text' | 'mutedText' | 'primary' | 'secondary' | 'success' | 'da
 export type AppTextProps = TextProps & { variant?: TextVariant; tone?: TextTone; align?: TextStyle['textAlign'] };
 
 export function AppText({ variant = 'body', tone = 'text', align, style, ...props }: AppTextProps) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return <Text {...props} style={[styles[variant], { color: theme[tone], textAlign: align }, style]} />;
 }
 

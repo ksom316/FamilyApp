@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { useAppTheme } from '../../lib/app-theme';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
 import { Card } from '../../components/Card';
@@ -24,8 +25,7 @@ const destinations = [
 ];
 
 export default function MoreScreen() {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Screen scroll maxWidth={840} contentStyle={styles.content}>
       <AppText variant="eyebrow" tone="primary">More to explore</AppText>

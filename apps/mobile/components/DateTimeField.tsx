@@ -1,7 +1,8 @@
+import { useAppTheme } from '../lib/app-theme';
 import { createElement, useState } from 'react';
-import { Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { colors, radius, spacing, typography, type Theme } from '@familyapp/config';
+import { radius, spacing, typography } from '@familyapp/config';
 
 import { AppText } from './AppText';
 import { Button } from './Button';
@@ -50,8 +51,7 @@ function formatHumanReadable(date: Date) {
  * needs a "pick a date and time" field instead of free-text entry.
  */
 export function DateTimeField({ label, value, onChange, minimumDate, placeholder = 'Choose a date and time', hint, dateOnly = false }: DateTimeFieldProps) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const date = value ? new Date(value) : null;
   // Android has no native combined date+time dialog, so it's a two-step date-then-time
   // flow; iOS gets a single spinner showing both at once.
@@ -111,7 +111,7 @@ export function DateTimeField({ label, value, onChange, minimumDate, placeholder
             onChange: (event: { target: { value: string } }) => handleWebChange(event.target.value),
             style: {
               backgroundColor: theme.input,
-              border: `1px solid ${theme.border}`,
+              border: `1px solid ${theme.inputBorder}`,
               borderRadius: radius.md,
               color: theme.text,
               flex: 1,
@@ -137,7 +137,7 @@ export function DateTimeField({ label, value, onChange, minimumDate, placeholder
         <Pressable
           accessibilityRole="button"
           onPress={openNativePicker}
-          style={[styles.nativeField, { backgroundColor: theme.input, borderColor: theme.border }]}
+          style={[styles.nativeField, { backgroundColor: theme.input, borderColor: theme.inputBorder }]}
         >
           <AppText variant="body" tone={date ? 'text' : 'mutedText'}>
             {date ? (dateOnly ? date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : formatHumanReadable(date)) : placeholder}

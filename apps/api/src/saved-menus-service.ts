@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, or, sql, type SQL } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
 import { familyMembers, familySavedMenuMeals, familySavedMenuMembers, familySavedMenus, householdMembers, households, users } from '@familyapp/db/schema';
@@ -155,7 +155,10 @@ const savedMenuBaseSelection = {
   createdBy: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   },
   createdAt: familySavedMenus.createdAt,
   updatedAt: familySavedMenus.updatedAt

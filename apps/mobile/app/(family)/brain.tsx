@@ -1,24 +1,23 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
-  useColorScheme,
   useWindowDimensions,
   View,
   type NativeSyntheticEvent,
   type TextInputKeyPressEventData
 } from 'react-native';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { MarkdownText } from '../../components/MarkdownText';
+import { FadeInView, PressableScale, ThinkingDots } from '../../components/Motion';
 import { Screen } from '../../components/Screen';
 import { BrainApiError, MAX_BRAIN_MESSAGE_LENGTH, sendFamilyBrainMessage, type BrainMessage } from '../../lib/brain';
 import { useCurrentFamily } from '../../lib/family-context';
@@ -34,8 +33,7 @@ const SUGGESTIONS = [
 
 export default function BrainScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
 
@@ -90,7 +88,7 @@ export default function BrainScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen maxWidth={880} contentStyle={styles.content}>
-        <View style={styles.header}>
+        <FadeInView style={styles.header}>
           <View style={[styles.headerMark, { backgroundColor: theme.accentSoft }]}>
             <AppText variant="heading" style={{ color: theme.warning }}>✦</AppText>
           </View>
@@ -101,7 +99,7 @@ export default function BrainScreen() {
               doesn’t see Family Chat, your location, or photo contents.
             </AppText>
           </View>
-        </View>
+        </FadeInView>
 
         <Card padded={false} style={[styles.conversationCard, { borderColor: theme.border }]}>
           <ScrollView
@@ -119,21 +117,21 @@ export default function BrainScreen() {
                   Try one of these, or type your own question below.
                 </AppText>
                 <View style={styles.suggestions}>
-                  {SUGGESTIONS.map((suggestion) => (
-                    <Pressable
+                  {SUGGESTIONS.map((suggestion, index) => (
+                    <FadeInView key={suggestion} delay={index * 55} distance={5}><PressableScale
                       key={suggestion}
                       accessibilityRole="button"
                       onPress={() => void send(suggestion)}
                       style={[styles.suggestionChip, { backgroundColor: theme.secondarySoft, borderColor: theme.border }]}
                     >
                       <AppText variant="label" tone="secondary">{suggestion}</AppText>
-                    </Pressable>
+                    </PressableScale></FadeInView>
                   ))}
                 </View>
               </View>
             ) : (
               turns.map((turn) => (
-                <View key={turn.id} style={[styles.messageRow, turn.role === 'user' && styles.myMessageRow]}>
+                <FadeInView key={turn.id} distance={6} style={[styles.messageRow, turn.role === 'user' && styles.myMessageRow]}>
                   {turn.role === 'assistant' ? (
                     <View style={[styles.assistantMark, { backgroundColor: theme.accentSoft }]}>
                       <AppText variant="caption" style={{ color: theme.warning }}>✦</AppText>
@@ -148,20 +146,20 @@ export default function BrainScreen() {
                       ? <MarkdownText content={turn.content} />
                       : <AppText variant="body" tone="textOnPrimary">{turn.content}</AppText>}
                   </View>
-                </View>
+                </FadeInView>
               ))
             )}
 
             {sending ? (
-              <View style={styles.messageRow}>
+              <FadeInView style={styles.messageRow} distance={4}>
                 <View style={[styles.assistantMark, { backgroundColor: theme.accentSoft }]}>
                   <AppText variant="caption" style={{ color: theme.warning }}>✦</AppText>
                 </View>
                 <View style={[styles.bubble, styles.thinkingBubble, { backgroundColor: theme.secondarySoft, borderColor: theme.border }]}>
-                  <ActivityIndicator size="small" color={theme.secondary} />
+                  <ThinkingDots color={theme.secondary} />
                   <AppText variant="caption" tone="mutedText">Family Brain is thinking…</AppText>
                 </View>
-              </View>
+              </FadeInView>
             ) : null}
           </ScrollView>
 

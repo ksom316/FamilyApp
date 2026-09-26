@@ -1,5 +1,6 @@
+import { useAppTheme } from '../lib/app-theme';
 import { useEffect, useState } from 'react';
-import { Image, Platform, StyleSheet, useColorScheme, View, type ImageStyle, type StyleProp } from 'react-native';
+import { Image, Platform, StyleSheet, View, type ImageStyle, type StyleProp } from 'react-native';
 import { colors } from '@familyapp/config';
 
 import { apiFetch } from '../lib/api';
@@ -9,8 +10,7 @@ import { authClient } from '../lib/auth-client';
 type ImageSource = { uri: string; headers?: Record<string, string> };
 
 export function AuthorizedImage({ path, style, resizeMode = 'cover' }: { path: string; style?: StyleProp<ImageStyle>; resizeMode?: 'cover' | 'contain' }) {
-  const scheme = useColorScheme();
-  const theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [source, setSource] = useState<ImageSource | null>(null);
   const [failed, setFailed] = useState(false);
 

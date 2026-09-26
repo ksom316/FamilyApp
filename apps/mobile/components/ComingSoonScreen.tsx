@@ -1,13 +1,13 @@
-import { StyleSheet, useColorScheme } from 'react-native';
-import { colors, spacing, type Theme } from '@familyapp/config';
+import { useAppTheme } from '../lib/app-theme';
+import { StyleSheet } from 'react-native';
+import { spacing } from '@familyapp/config';
 
 import { AppText } from './AppText';
 import { Card } from './Card';
 import { Screen } from './Screen';
 
 export function ComingSoonScreen({ title, intro, detail }: { title: string; intro: string; detail: string }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Screen scroll maxWidth={920} contentStyle={styles.content}>
       <AppText variant="eyebrow" tone="secondary">A little more, soon</AppText>

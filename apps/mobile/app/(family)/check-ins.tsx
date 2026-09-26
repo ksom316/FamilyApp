@@ -1,12 +1,14 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, typography, type Theme } from '@familyapp/config';
+import { radius, spacing, typography } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
-import { Avatar } from '../../components/Avatar';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
+import { PressableScale, SuccessPulse } from '../../components/Motion';
 import { Screen } from '../../components/Screen';
 import { useCurrentFamily } from '../../lib/family-context';
 import {
@@ -33,8 +35,7 @@ function formatWhen(value: string) {
 
 export default function CheckInsScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   const [checkIns, setCheckIns] = useState<FamilyCheckIn[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -42,6 +43,7 @@ export default function CheckInsScreen() {
   const [note, setNote] = useState('');
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
+  const [confirmedCheckInId, setConfirmedCheckInId] = useState<string | null>(null);
 
   const focusedRef = useRef(false);
   const refreshInFlightRef = useRef(false);
@@ -78,6 +80,7 @@ export default function CheckInsScreen() {
     try {
       const checkIn = await postCheckIn(family.familyId, { status: choosingStatus, message: note.trim() || null });
       setCheckIns((current) => [checkIn, ...(current ?? [])]);
+      setConfirmedCheckInId(checkIn.id);
       setChoosingStatus(null);
       setNote('');
     } catch (err) {
@@ -123,22 +126,22 @@ export default function CheckInsScreen() {
         </Card>
       ) : (
         <View style={styles.actionRow}>
-          <Pressable
+          <PressableScale
             accessibilityRole="button"
             onPress={() => setChoosingStatus('safe')}
             style={[styles.actionButton, { backgroundColor: theme.successSoft, borderColor: theme.success }]}
           >
             <AppText variant="display" style={styles.actionMark}>✓</AppText>
             <AppText variant="label" tone="success">I'm safe</AppText>
-          </Pressable>
-          <Pressable
+          </PressableScale>
+          <PressableScale
             accessibilityRole="button"
             onPress={() => setChoosingStatus('arrived')}
             style={[styles.actionButton, { backgroundColor: theme.primarySoft, borderColor: theme.primary }]}
           >
             <AppText variant="display" style={styles.actionMark}>🏠</AppText>
             <AppText variant="label" tone="primary">I've arrived</AppText>
-          </Pressable>
+          </PressableScale>
         </View>
       )}
 
@@ -167,10 +170,16 @@ export default function CheckInsScreen() {
           {checkIns.map((item) => (
             <Card key={item.id} style={styles.checkInCard}>
               <View style={styles.personRow}>
-                <Avatar name={item.member.displayName} imageUrl={item.member.avatar} size={40} />
+                <MemberAvatar member={item.member} familyId={family.familyId} size={40} />
                 <View style={styles.detailCopy}>
                   <AppText variant="label">{item.member.displayName}</AppText>
-                  <AppText variant="body" tone={item.status === 'safe' ? 'success' : 'primary'}>{STATUS_MARKS[item.status]} {STATUS_LABELS[item.status]}</AppText>
+                  {item.id === confirmedCheckInId ? (
+                    <SuccessPulse style={styles.confirmedStatus}>
+                      <AppText variant="body" tone={item.status === 'safe' ? 'success' : 'primary'}>{STATUS_MARKS[item.status]} {STATUS_LABELS[item.status]}</AppText>
+                    </SuccessPulse>
+                  ) : (
+                    <AppText variant="body" tone={item.status === 'safe' ? 'success' : 'primary'}>{STATUS_MARKS[item.status]} {STATUS_LABELS[item.status]}</AppText>
+                  )}
                   {item.message ? <AppText variant="caption" tone="mutedText" style={styles.messageText}>"{item.message}"</AppText> : null}
                   <AppText variant="caption" tone="mutedText" style={styles.timeText}>{formatWhen(item.createdAt)}</AppText>
                 </View>
@@ -206,6 +215,7 @@ const styles = StyleSheet.create({
   checkInCard: { padding: spacing.lg },
   personRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
   detailCopy: { flex: 1, minWidth: 0 },
+  confirmedStatus: { alignSelf: 'flex-start' },
   messageText: { marginTop: spacing.xs },
   timeText: { marginTop: spacing.xs }
 });

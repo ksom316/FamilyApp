@@ -1,10 +1,11 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
@@ -36,8 +37,7 @@ export default function EmergencyDetailScreen() {
   const family = useCurrentFamily();
   const params = useLocalSearchParams<{ incidentId: string }>();
   const incidentId = Array.isArray(params.incidentId) ? params.incidentId[0] : params.incidentId;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   const [incident, setIncident] = useState<EmergencyIncident | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,7 +136,7 @@ export default function EmergencyDetailScreen() {
 
       <Card elevated style={[styles.headerCard, incident.status === 'active' ? { borderColor: theme.danger } : undefined]}>
         <View style={styles.headerRow}>
-          <Avatar name={incident.createdBy.displayName} imageUrl={incident.createdBy.avatar} size={48} />
+          <MemberAvatar member={incident.createdBy} familyId={family.familyId} size={48} />
           <View style={styles.headerCopy}>
             <AppText variant="label">{incident.createdBy.displayName} reported an emergency</AppText>
             <AppText variant="heading" tone="danger">{EMERGENCY_TYPE_LABELS[incident.emergencyType]}</AppText>
@@ -193,7 +193,7 @@ export default function EmergencyDetailScreen() {
           {incident.acknowledgements.map((ack) => (
             <Card key={ack.id} style={styles.ackCard}>
               <View style={styles.personRow}>
-                <Avatar name={ack.member.displayName} imageUrl={ack.member.avatar} size={36} />
+                <MemberAvatar member={ack.member} familyId={family.familyId} size={36} />
                 <View style={styles.detailCopy}>
                   <AppText variant="label">{ack.member.displayName}</AppText>
                   <AppText variant="caption" tone={ack.responseStatus === 'responding' ? 'primary' : 'mutedText'}>

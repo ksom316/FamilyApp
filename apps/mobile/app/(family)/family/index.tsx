@@ -1,7 +1,8 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
 import { Button } from '../../../components/Button';
@@ -15,8 +16,7 @@ import { createFamilyHousehold, getFamilyHouseholds, HouseholdApiError, type Hou
 
 export default function FamilyScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const canManage = family.role === 'owner' || family.role === 'guardian';
   const [members, setMembers] = useState<FamilyMember[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,8 +111,7 @@ export default function FamilyScreen() {
 }
 
 function MemberCard({ member, familyId }: { member: FamilyMember; familyId: string }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const roleLabel = member.role === 'owner' ? 'Family creator' : member.role === 'guardian' ? 'Guardian' : 'Family member';
   const roleColor = member.role === 'owner' ? theme.primarySoft : member.role === 'guardian' ? theme.secondarySoft : theme.successSoft;
   const roleTone = member.role === 'owner' ? 'primary' : member.role === 'guardian' ? 'secondary' : 'success';
@@ -128,8 +127,7 @@ function MemberCard({ member, familyId }: { member: FamilyMember; familyId: stri
 }
 
 function HouseholdCard({ household }: { household: Household }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable accessibilityRole="button" onPress={() => router.push(`/(family)/family/${household.id}` as never)} style={styles.householdCardWrap}>
       <Card style={styles.householdCard}>

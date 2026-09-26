@@ -1,13 +1,14 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
-import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { CalendarEventEditor } from '../../components/CalendarEventEditor';
 import { Card } from '../../components/Card';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { Screen } from '../../components/Screen';
 import {
   CalendarApiError,
@@ -89,8 +90,7 @@ export default function CalendarScreen() {
   const family = useCurrentFamily();
   const { width } = useWindowDimensions();
   const isWide = width >= 760;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const today = new Date();
   const [month, setMonth] = useState(monthStart(today));
   const [selectedDay, setSelectedDay] = useState(localDateKey(today));
@@ -304,7 +304,7 @@ export default function CalendarScreen() {
           {openEvent.location ? <AppText variant="body" style={styles.detailLine}>Location: {openEvent.location}</AppText> : null}
           {openEvent.description ? <AppText variant="body" style={styles.description}>{openEvent.description}</AppText> : null}
           <View style={[styles.audienceBadge, { backgroundColor: theme.secondarySoft }]}><AppText variant="caption" tone="secondary">{formatCalendarAudience(openEvent.audience)}</AppText></View>
-          <View style={styles.creatorRow}><Avatar name={openEvent.createdBy.displayName} imageUrl={openEvent.createdBy.avatar} size={32} /><AppText variant="caption" tone="mutedText">Created by {openEvent.createdBy.displayName}</AppText></View>
+          <View style={styles.creatorRow}><MemberAvatar member={openEvent.createdBy} familyId={family.familyId} size={32} /><AppText variant="caption" tone="mutedText">Created by {openEvent.createdBy.displayName}</AppText></View>
           {openEvent.createdByMemberId === family.id ? <View style={styles.detailActions}><Button label="Edit" variant="secondary" onPress={() => setEditing(true)} /><Button label="Delete" variant="quiet" loading={deleting} onPress={confirmDelete} /></View> : null}
         </Card>
       ) : null}
@@ -317,8 +317,7 @@ export default function CalendarScreen() {
 }
 
 function EventRow({ event, onPress }: { event: CalendarEvent; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [pressed && styles.pressed]}>
       <Card style={styles.eventCard}>
@@ -333,8 +332,7 @@ function EventRow({ event, onPress }: { event: CalendarEvent; onPress: () => voi
 // and critically no Edit/Delete affordance — this represents another feature's own item,
 // read-only here, so the only action is navigating to where it actually lives.
 function ExternalItemRow({ item, onPress }: { item: CalendarTimelineItem; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [pressed && styles.pressed]}>
       <Card style={styles.eventCard}>

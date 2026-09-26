@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
 import {
@@ -186,7 +186,10 @@ const baseSelection = {
   createdBy: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   }
 };
 

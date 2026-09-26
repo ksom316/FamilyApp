@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import 'leaflet/dist/leaflet.css';
-import { colors, radius } from '@familyapp/config';
+import { radius, type Theme } from '@familyapp/config';
 
 import { AppText } from './AppText';
+import { useAppTheme } from '../lib/app-theme';
 import type { FamilyMapProps } from './FamilyMap.types';
 import type { Map as LeafletMap, Marker as LeafletMarker } from 'leaflet';
 
@@ -15,13 +16,14 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character] ?? character);
 }
 
-function markerHtml(name: string, findMe: boolean) {
-  const background = findMe ? colors.light.primary : colors.light.secondary;
-  const halo = findMe ? `box-shadow:0 0 0 7px ${colors.light.primarySoft};` : '';
-  return `<div data-family-marker style="align-items:center;background:${background};border:3px solid white;border-radius:25px;color:white;display:flex;font-family:system-ui;font-size:13px;font-weight:800;height:44px;justify-content:center;transition:transform .15s ease,box-shadow .15s ease;width:44px;${halo}">${escapeHtml(initials(name))}</div>`;
+function markerHtml(name: string, findMe: boolean, colors: Theme) {
+  const background = findMe ? colors.primary : colors.secondary;
+  const halo = findMe ? `box-shadow:0 0 0 7px ${colors.primarySoft};` : '';
+  return `<div data-family-marker style="align-items:center;background:${background};border:3px solid ${colors.surface};border-radius:25px;color:${colors.onPrimary};display:flex;font-family:system-ui;font-size:13px;font-weight:800;height:44px;justify-content:center;transition:transform .15s ease,box-shadow .15s ease;width:44px;${halo}">${escapeHtml(initials(name))}</div>`;
 }
 
 export function FamilyMap({ shares, selectedShareId, onSelect }: FamilyMapProps) {
+  const { colors } = useAppTheme();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const markersRef = useRef(new Map<string, LeafletMarker>());
@@ -55,7 +57,7 @@ export function FamilyMap({ shares, selectedShareId, onSelect }: FamilyMapProps)
         const marker = L.marker(coordinate, {
           icon: L.divIcon({
             className: '',
-            html: markerHtml(share.member.displayName, share.purpose === 'come_find_me'),
+            html: markerHtml(share.member.displayName, share.purpose === 'come_find_me', colors),
             iconAnchor: [22, 22],
             iconSize: [44, 44]
           }),
@@ -76,7 +78,7 @@ export function FamilyMap({ shares, selectedShareId, onSelect }: FamilyMapProps)
       mapRef.current?.remove();
       mapRef.current = null;
     };
-  }, [coordinateKey]);
+  }, [colors, coordinateKey]);
 
   useEffect(() => {
     for (const [id, marker] of markersRef.current) {
@@ -84,29 +86,29 @@ export function FamilyMap({ shares, selectedShareId, onSelect }: FamilyMapProps)
       if (!element) continue;
       const selected = id === selectedShareId;
       element.style.transform = selected ? 'scale(1.18)' : 'scale(1)';
-      element.style.outline = selected ? `3px solid ${colors.light.primary}` : 'none';
+      element.style.outline = selected ? `3px solid ${colors.primary}` : 'none';
       element.style.outlineOffset = selected ? '3px' : '0';
     }
-  }, [selectedShareId, ready]);
+  }, [colors.primary, selectedShareId, ready]);
 
   if (shares.length === 0) {
-    return <View style={styles.empty}><AppText variant="title" tone="mutedText">◎</AppText><AppText variant="label">No locations to map yet</AppText><AppText variant="caption" tone="mutedText" align="center">Eligible shares will appear here without using your browser location to invent a map center.</AppText></View>;
+    return <View style={[styles.empty, { backgroundColor: colors.backgroundTint }]}><AppText variant="title" tone="mutedText">◎</AppText><AppText variant="label">No locations to map yet</AppText><AppText variant="caption" tone="mutedText" align="center">Eligible shares will appear here without using your browser location to invent a map center.</AppText></View>;
   }
 
   if (failed) {
-    return <View style={styles.empty}><AppText variant="label">The embedded map could not load.</AppText><AppText variant="caption" tone="mutedText" align="center">Use the sharing list and external map actions below.</AppText></View>;
+    return <View style={[styles.empty, { backgroundColor: colors.backgroundTint }]}><AppText variant="label">The embedded map could not load.</AppText><AppText variant="caption" tone="mutedText" align="center">Use the sharing list and external map actions below.</AppText></View>;
   }
 
   return (
     <View style={styles.shell}>
       <div ref={containerRef} aria-label="Family map" style={{ height: '100%', width: '100%' }} />
-      {!ready ? <View pointerEvents="none" style={styles.loading}><AppText variant="caption" tone="mutedText">Loading family map…</AppText></View> : null}
+      {!ready ? <View pointerEvents="none" style={[styles.loading, { backgroundColor: colors.surfaceElevated }]}><AppText variant="caption" tone="mutedText">Loading family map…</AppText></View> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   shell: { borderRadius: radius.lg, height: 360, marginTop: 12, overflow: 'hidden', position: 'relative' },
-  empty: { alignItems: 'center', backgroundColor: colors.light.backgroundTint, borderRadius: radius.lg, gap: 6, justifyContent: 'center', minHeight: 300, padding: 24 },
-  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.78)', justifyContent: 'center' }
+  empty: { alignItems: 'center', borderRadius: radius.lg, gap: 6, justifyContent: 'center', minHeight: 300, padding: 24 },
+  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', opacity: 0.92 }
 });

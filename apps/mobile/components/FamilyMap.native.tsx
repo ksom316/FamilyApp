@@ -1,19 +1,18 @@
+import { useAppTheme } from '../lib/app-theme';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import { colors, radius, type Theme } from '@familyapp/config';
+import { radius } from '@familyapp/config';
 
 import { AppText } from './AppText';
 import type { FamilyMapProps } from './FamilyMap.types';
-import { useColorScheme } from 'react-native';
 
 function initials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || '?';
 }
 
 export function FamilyMap({ shares, selectedShareId, onSelect }: FamilyMapProps) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const mapRef = useRef<MapView | null>(null);
   const [ready, setReady] = useState(false);
   const coordinateKey = useMemo(
@@ -65,16 +64,16 @@ export function FamilyMap({ shares, selectedShareId, onSelect }: FamilyMapProps)
               description={findMe ? 'Come Find Me' : 'Sharing location'}
               onPress={() => onSelect(share.id)}
             >
-              <View style={[styles.markerHalo, findMe && { backgroundColor: theme.primarySoft }, selected && { borderColor: theme.primary, borderWidth: 3 }]}>
+              <View style={[styles.markerHalo, { backgroundColor: theme.surface, borderColor: theme.surface }, findMe && { backgroundColor: theme.primarySoft }, selected && { borderColor: theme.primary, borderWidth: 3 }]}>
                 <View style={[styles.marker, { backgroundColor: findMe ? theme.primary : theme.secondary }]}>
-                  <AppText variant="caption" style={styles.markerText}>{initials(share.member.displayName)}</AppText>
+                  <AppText variant="caption" style={[styles.markerText, { color: theme.onPrimary }]}>{initials(share.member.displayName)}</AppText>
                 </View>
               </View>
             </Marker>
           );
         })}
       </MapView>
-      {!ready ? <View pointerEvents="none" style={styles.loading}><ActivityIndicator color={theme.primary} /><AppText variant="caption" tone="mutedText">Loading family map…</AppText></View> : null}
+      {!ready ? <View pointerEvents="none" style={[styles.loading, { backgroundColor: theme.surfaceElevated }]}><ActivityIndicator color={theme.primary} /><AppText variant="caption" tone="mutedText">Loading family map…</AppText></View> : null}
     </View>
   );
 }
@@ -82,8 +81,8 @@ export function FamilyMap({ shares, selectedShareId, onSelect }: FamilyMapProps)
 const styles = StyleSheet.create({
   shell: { borderRadius: radius.lg, borderWidth: 1, height: 360, marginTop: 12, overflow: 'hidden', position: 'relative' },
   empty: { alignItems: 'center', borderRadius: radius.lg, gap: 6, justifyContent: 'center', minHeight: 300, padding: 24 },
-  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.78)', gap: 8, justifyContent: 'center' },
-  markerHalo: { alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: '#FFFFFF', borderRadius: 28, borderWidth: 3, height: 52, justifyContent: 'center', width: 52 },
+  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', gap: 8, justifyContent: 'center', opacity: 0.92 },
+  markerHalo: { alignItems: 'center', borderRadius: 28, borderWidth: 3, height: 52, justifyContent: 'center', width: 52 },
   marker: { alignItems: 'center', borderRadius: 21, height: 42, justifyContent: 'center', width: 42 },
-  markerText: { color: '#FFFFFF', fontWeight: '800' }
+  markerText: { fontWeight: '800' }
 });

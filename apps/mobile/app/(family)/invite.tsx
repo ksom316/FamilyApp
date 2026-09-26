@@ -1,7 +1,8 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
 import { Button } from '../../components/Button';
@@ -14,8 +15,7 @@ type InviteRole = FamilyInvitation['role'];
 
 export default function InviteMemberScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [role, setRole] = useState<InviteRole>('member');
   const [invitation, setInvitation] = useState<FamilyInvitation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,8 +71,7 @@ export default function InviteMemberScreen() {
 }
 
 function RoleOption({ label, description, selected, onPress }: { label: string; description: string; selected: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.roleOption, { borderColor: selected ? theme.primary : theme.border, backgroundColor: selected ? theme.primarySoft : theme.surface }]}>
       <View style={[styles.radio, { borderColor: selected ? theme.primary : theme.border }]}>{selected ? <View style={[styles.radioInner, { backgroundColor: theme.primary }]} /> : null}</View>

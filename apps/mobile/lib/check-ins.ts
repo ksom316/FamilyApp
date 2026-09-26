@@ -1,9 +1,17 @@
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 
 export const CHECK_IN_STATUSES = ['safe', 'arrived'] as const;
 export type CheckInStatus = (typeof CHECK_IN_STATUSES)[number];
 
-export type CheckInPerson = { memberId: string; displayName: string; avatar: string | null };
+export type CheckInPerson = {
+  memberId: string;
+  displayName: string;
+  avatar: string | null;
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
+};
 
 export type FamilyCheckIn = {
   id: string;

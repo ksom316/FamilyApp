@@ -1,8 +1,9 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Redirect, Slot } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, type Theme } from '@familyapp/config';
+import { spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
 import { DesktopFamilySidebar, MobileFamilyHeader, MobileFamilyNavigation } from '../../components/FamilyNavigation';
@@ -18,8 +19,7 @@ export default function FamilyLayout() {
   const isDesktop = width >= 900;
   const [memberships, setMemberships] = useState<FamilyMembership[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   const loadMemberships = useCallback(async () => {
     setError(null);

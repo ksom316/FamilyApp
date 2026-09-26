@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
 import { familyMembers, familyNotifications, householdMembers, users } from '@familyapp/db/schema';
@@ -98,7 +98,10 @@ const notificationSelection = {
   actor: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   }
 };
 

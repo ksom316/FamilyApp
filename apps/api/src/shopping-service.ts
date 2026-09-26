@@ -124,7 +124,10 @@ const listBaseSelection = {
   createdBy: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   }
 };
 
@@ -235,7 +238,10 @@ const itemSelection = {
   addedBy: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   },
   createdAt: familyShoppingItems.createdAt,
   updatedAt: familyShoppingItems.updatedAt

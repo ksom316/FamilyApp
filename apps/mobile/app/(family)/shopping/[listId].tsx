@@ -1,12 +1,14 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { AnimatedProgress, SuccessPulse } from '../../../components/Motion';
 import { Screen } from '../../../components/Screen';
 import { TextField } from '../../../components/TextField';
 import { useCurrentFamily } from '../../../lib/family-context';
@@ -52,8 +54,7 @@ export default function ShoppingListDetailScreen() {
   const family = useCurrentFamily();
   const params = useLocalSearchParams<{ listId: string }>();
   const listId = Array.isArray(params.listId) ? params.listId[0] : params.listId;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   const [list, setList] = useState<ShoppingListDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -206,7 +207,7 @@ export default function ShoppingListDetailScreen() {
           {list.shoppingDate ? <AppText variant="caption" tone="mutedText" style={styles.shoppingDate}>{formatShoppingDate(list.shoppingDate)}</AppText> : null}
 
           <View style={styles.personRow}>
-            <Avatar name={list.createdBy.displayName} imageUrl={list.createdBy.avatar} size={28} />
+            <MemberAvatar member={list.createdBy} familyId={family.familyId} size={28} />
             <AppText variant="caption" tone="mutedText">Started by {list.createdBy.displayName}</AppText>
           </View>
 
@@ -214,7 +215,7 @@ export default function ShoppingListDetailScreen() {
             <>
               <AppText variant="caption" tone="mutedText" style={styles.progressLabel}>{list.purchasedItems} of {list.totalItems} items purchased · {percentage}%</AppText>
               <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
-                <View style={[styles.barFill, { width: `${percentage}%`, backgroundColor: theme.success }]} />
+                <AnimatedProgress color={theme.success} percentage={percentage} />
               </View>
             </>
           ) : null}
@@ -306,8 +307,7 @@ function ItemRow({ item, readOnly, busy, onToggle, onEdit, onRemove }: {
   onEdit: () => void;
   onRemove: () => void;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const purchased = Boolean(item.purchasedAt);
   const meta = formatItemMeta(item);
 
@@ -320,7 +320,7 @@ function ItemRow({ item, readOnly, busy, onToggle, onEdit, onRemove }: {
         onPress={onToggle}
         style={[styles.check, { borderColor: purchased ? theme.success : theme.borderStrong, backgroundColor: purchased ? theme.success : 'transparent' }]}
       >
-        <AppText variant="label" style={{ color: purchased ? theme.textOnPrimary : theme.mutedText }}>{purchased ? '✓' : ''}</AppText>
+        {purchased ? <SuccessPulse><AppText variant="label" style={{ color: theme.textOnPrimary }}>✓</AppText></SuccessPulse> : <AppText variant="label" style={{ color: theme.mutedText }} />}
       </Pressable>
       <View style={styles.itemCopy}>
         <AppText variant="label" style={purchased ? styles.itemNamePurchased : undefined}>{item.name}</AppText>

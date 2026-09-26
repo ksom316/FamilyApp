@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
 import { familyMembers, familyMemories, familyMemoryFavorites, users } from '@familyapp/db/schema';
@@ -87,7 +87,10 @@ const memorySelection = {
   sharedBy: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   }
 };
 

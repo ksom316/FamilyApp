@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 
 export const EMERGENCY_TYPES = ['need_help', 'medical', 'safety_concern', 'other'] as const;
 export type EmergencyType = (typeof EMERGENCY_TYPES)[number];
@@ -13,7 +14,14 @@ export const EMERGENCY_TYPE_LABELS: Record<EmergencyType, string> = {
   other: 'Other'
 };
 
-export type EmergencyPerson = { memberId: string; displayName: string; avatar: string | null };
+export type EmergencyPerson = {
+  memberId: string;
+  displayName: string;
+  avatar: string | null;
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
+};
 
 export type EmergencyAcknowledgement = {
   id: string;

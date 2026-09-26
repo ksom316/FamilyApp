@@ -1,8 +1,9 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
 import { Button } from '../../components/Button';
@@ -63,8 +64,7 @@ function audienceInput(audienceType: AudienceType, householdId: string | null, m
 export default function LocationScreen() {
   const family = useCurrentFamily();
   const { width } = useWindowDimensions();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [shares, setShares] = useState<FamilyLocationShare[] | null>(null);
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [households, setHouseholds] = useState<Household[]>([]);
@@ -356,14 +356,12 @@ function AudiencePicker({ audienceType, setAudienceType, householdId, setHouseho
 }
 
 function Choice({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[styles.choice, { backgroundColor: selected ? theme.primarySoft : theme.input, borderColor: selected ? theme.primary : theme.border }]}><AppText variant="label" tone={selected ? 'primary' : 'text'}>{label}</AppText></Pressable>;
 }
 
 function SelectedShareCard({ share, currentMemberId, familyId, onClose, onDirections }: { share: FamilyLocationShare; currentMemberId: string; familyId: string; onClose: () => void; onDirections: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const freshnessState = freshness(share.updatedAt);
   const audienceLabel = share.audience.type === 'members' && share.memberId !== currentMemberId ? 'Specific people' : formatLocationAudience(share.audience);
   return <Card elevated style={[styles.selectedCard, { borderColor: theme.primary }]}>
@@ -379,8 +377,7 @@ function SelectedShareCard({ share, currentMemberId, familyId, onClose, onDirect
 }
 
 function ShareCard({ share, selected, familyId, onSelect, onExternal, onDirections }: { share: FamilyLocationShare; selected: boolean; familyId: string; onSelect: () => void; onExternal: () => void; onDirections: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const freshnessState = freshness(share.updatedAt);
   return <Card style={[styles.memberCard, selected && { borderColor: theme.primary, borderWidth: 1 }]}>
     <View style={styles.personRow}>

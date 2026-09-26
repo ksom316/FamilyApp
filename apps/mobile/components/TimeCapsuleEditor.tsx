@@ -1,12 +1,14 @@
+import { useAppTheme } from '../lib/app-theme';
 import { useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { Image, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from './AppText';
 import { AuthorizedImage } from './AuthorizedImage';
 import { Button } from './Button';
 import { Card } from './Card';
+import { DateTimeField } from './DateTimeField';
 import { TextField } from './TextField';
 import { memoryMediaPath, type FamilyMemory } from '../lib/memories';
 import {
@@ -20,16 +22,6 @@ import {
 const MAX_ATTACHED_MEMORIES = 24;
 const MAX_PRIVATE_PHOTOS = 8;
 
-function dateTimeValue(date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
-function toIso(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 export function TimeCapsuleEditor({ familyId, memories, capsule, onCancel, onSaved }: {
   familyId: string;
   memories: FamilyMemory[];
@@ -37,12 +29,11 @@ export function TimeCapsuleEditor({ familyId, memories, capsule, onCancel, onSav
   onCancel: () => void;
   onSaved: () => Promise<void> | void;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const { width } = useWindowDimensions();
   const [title, setTitle] = useState(capsule?.title ?? '');
   const [message, setMessage] = useState('');
-  const [unlockAt, setUnlockAt] = useState(dateTimeValue(capsule ? new Date(capsule.unlockAt) : undefined));
+  const [unlockAt, setUnlockAt] = useState<string | null>(capsule ? capsule.unlockAt : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString());
   const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
   const [replaceMemories, setReplaceMemories] = useState(!capsule);
   const [privatePhotos, setPrivatePhotos] = useState<CapsulePhotoInput[]>([]);
@@ -91,11 +82,11 @@ export function TimeCapsuleEditor({ familyId, memories, capsule, onCancel, onSav
 
   async function save() {
     if (savingRef.current) return;
-    const unlockAtIso = toIso(unlockAt);
     if (!title.trim()) return setError('Give this capsule a title.');
-    if (!unlockAtIso || new Date(unlockAtIso).getTime() <= Date.now() + 60_000) {
+    if (!unlockAt || new Date(unlockAt).getTime() <= Date.now() + 60_000) {
       return setError('Choose an unlock time at least one minute in the future.');
     }
+    const unlockAtIso = unlockAt;
 
     savingRef.current = true;
     setSaving(true);
@@ -144,7 +135,7 @@ export function TimeCapsuleEditor({ familyId, memories, capsule, onCancel, onSav
         multiline
         placeholder={capsule ? 'Leave blank to keep the sealed message unchanged' : 'Something your family will read when it opens'}
       />
-      <TextField label="Unlock date and time" value={unlockAt} onChangeText={setUnlockAt} hint="YYYY-MM-DDTHH:mm" autoCapitalize="none" />
+      <DateTimeField label="Unlock date and time" value={unlockAt} onChange={setUnlockAt} minimumDate={new Date(Date.now() + 60_000)} />
 
       {capsule ? (
         <Pressable

@@ -1,12 +1,14 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { FadeInView, PressableScale, SuccessPulse } from '../../../components/Motion';
 import { Screen } from '../../../components/Screen';
 import { TimeCapsuleEditor } from '../../../components/TimeCapsuleEditor';
 import { useCurrentFamily } from '../../../lib/family-context';
@@ -33,14 +35,14 @@ function timeRemaining(unlockAt: string, now: number) {
 
 export default function TimeCapsulesScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 760;
   const [capsules, setCapsules] = useState<TimeCapsuleSummary[] | null>(null);
   const [memories, setMemories] = useState<FamilyMemory[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [showSealedConfirmation, setShowSealedConfirmation] = useState(false);
   const [clockOffset, setClockOffset] = useState(0);
   const [now, setNow] = useState(Date.now());
   const unlockRefreshRef = useRef(false);
@@ -94,8 +96,18 @@ export default function TimeCapsulesScreen() {
           familyId={family.familyId}
           memories={memories}
           onCancel={() => setAdding(false)}
-          onSaved={async () => { setAdding(false); await load(); }}
+          onSaved={async () => { setAdding(false); await load(); setShowSealedConfirmation(true); }}
         />
+      ) : null}
+
+      {showSealedConfirmation ? (
+        <FadeInView distance={4} style={styles.confirmationWrap}>
+          <Card style={[styles.confirmationCard, { backgroundColor: theme.successSoft }]}>
+            <SuccessPulse><AppText variant="heading" tone="success">&#10003;</AppText></SuccessPulse>
+            <AppText variant="body" tone="success" style={styles.confirmationCopy}>Your time capsule is sealed for the future.</AppText>
+            <Button label="Dismiss" variant="quiet" onPress={() => setShowSealedConfirmation(false)} />
+          </Card>
+        </FadeInView>
       ) : null}
 
       {error ? (
@@ -121,6 +133,7 @@ export default function TimeCapsulesScreen() {
             now={now}
             isWide={isWide}
             empty="No locked capsules yet. Create one for a future family moment."
+            familyId={family.familyId}
           />
           <CapsuleSection
             title="Opened / Ready"
@@ -129,6 +142,7 @@ export default function TimeCapsulesScreen() {
             now={now}
             isWide={isWide}
             empty="Unlocked capsules will appear here."
+            familyId={family.familyId}
           />
         </>
       ) : null}
@@ -136,13 +150,14 @@ export default function TimeCapsulesScreen() {
   );
 }
 
-function CapsuleSection({ title, detail, capsules, now, isWide, empty }: {
+function CapsuleSection({ title, detail, capsules, now, isWide, empty, familyId }: {
   title: string;
   detail: string;
   capsules: TimeCapsuleSummary[];
   now: number;
   isWide: boolean;
   empty: string;
+  familyId: string;
 }) {
   return (
     <View style={styles.section}>
@@ -150,7 +165,7 @@ function CapsuleSection({ title, detail, capsules, now, isWide, empty }: {
       <AppText variant="caption" tone="mutedText" style={styles.sectionDetail}>{detail}</AppText>
       {capsules.length ? (
         <View style={styles.grid}>
-          {capsules.map((capsule) => <CapsuleCard key={capsule.id} capsule={capsule} now={now} isWide={isWide} />)}
+          {capsules.map((capsule) => <CapsuleCard key={capsule.id} capsule={capsule} now={now} isWide={isWide} familyId={familyId} />)}
         </View>
       ) : (
         <Card style={styles.emptyCard}><AppText variant="body" tone="mutedText">{empty}</AppText></Card>
@@ -159,11 +174,10 @@ function CapsuleSection({ title, detail, capsules, now, isWide, empty }: {
   );
 }
 
-function CapsuleCard({ capsule, now, isWide }: { capsule: TimeCapsuleSummary; now: number; isWide: boolean }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+function CapsuleCard({ capsule, now, isWide, familyId }: { capsule: TimeCapsuleSummary; now: number; isWide: boolean; familyId: string }) {
+  const { colors: theme } = useAppTheme();
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={`${capsule.title}, ${capsule.isLocked ? 'locked' : 'ready to open'}`}
       onPress={() => router.push(`/(family)/capsules/${capsule.id}` as never)}
@@ -179,7 +193,7 @@ function CapsuleCard({ capsule, now, isWide }: { capsule: TimeCapsuleSummary; no
             {capsule.isLocked ? 'Unlocks' : 'Unlocked'} {formatUnlock(capsule.unlockAt)}
           </AppText>
           <View style={styles.creatorRow}>
-            <Avatar name={capsule.createdBy.displayName} imageUrl={capsule.createdBy.avatar} size={24} />
+            <MemberAvatar member={capsule.createdBy} familyId={familyId} size={24} />
             <AppText variant="caption" tone="mutedText">Created by {capsule.createdBy.displayName}</AppText>
           </View>
           <View style={[styles.statusPill, { backgroundColor: theme.surface }]}>
@@ -189,7 +203,7 @@ function CapsuleCard({ capsule, now, isWide }: { capsule: TimeCapsuleSummary; no
           </View>
         </View>
       </Card>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -200,6 +214,9 @@ const styles = StyleSheet.create({
   title: { marginTop: spacing.xs },
   subtitle: { marginTop: spacing.sm },
   errorCard: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.lg },
+  confirmationWrap: { marginTop: spacing.lg },
+  confirmationCard: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  confirmationCopy: { flex: 1 },
   loading: { alignItems: 'center', paddingVertical: spacing.xxxl },
   loadingText: { marginTop: spacing.md },
   section: { marginTop: spacing.xxl },

@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
 import { familyEmergencyAcknowledgements, familyEmergencyIncidents, familyMembers, users } from '@familyapp/db/schema';
@@ -82,7 +82,10 @@ const incidentSelection = {
   createdBy: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   }
 };
 
@@ -120,7 +123,10 @@ const ackSelection = {
   member: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   }
 };
 

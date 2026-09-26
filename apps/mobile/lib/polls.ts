@@ -1,6 +1,14 @@
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 
-export type PollPerson = { memberId: string; displayName: string; avatar: string | null };
+export type PollPerson = {
+  memberId: string;
+  displayName: string;
+  avatar: string | null;
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
+};
 export type PollOption = { id: string; text: string; votes: number; percentage: number };
 
 export type Poll = {

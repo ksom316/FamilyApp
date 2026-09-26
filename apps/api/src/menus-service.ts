@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
 import { familyMembers, familyMenuMeals, familyMenus, householdMembers, households, users } from '@familyapp/db/schema';
@@ -157,7 +157,10 @@ const menuBaseSelection = {
   createdBy: {
     memberId: familyMembers.id,
     displayName: users.name,
-    avatar: users.image
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
   }
 };
 

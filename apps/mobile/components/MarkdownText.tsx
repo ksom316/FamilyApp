@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppText, type AppTextProps } from './AppText';
+import { useAppTheme } from '../lib/app-theme';
 
 type MarkdownTextProps = { content: string; tone?: AppTextProps['tone']; variant?: AppTextProps['variant'] };
 
@@ -47,7 +48,7 @@ function parseBlocks(content: string): Block[] {
   return blocks;
 }
 
-function renderInline(text: string): ReactNode[] {
+function renderInline(text: string, codeColors: { backgroundColor: string; color: string }): ReactNode[] {
   const pattern = /\*\*(.+?)\*\*|`([^`]+?)`|_(.+?)_|\*(.+?)\*/g;
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
@@ -56,7 +57,7 @@ function renderInline(text: string): ReactNode[] {
   while ((match = pattern.exec(text))) {
     if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
     if (match[1] !== undefined) nodes.push(<Text key={key++} style={styles.bold}>{match[1]}</Text>);
-    else if (match[2] !== undefined) nodes.push(<Text key={key++} style={styles.code}>{match[2]}</Text>);
+    else if (match[2] !== undefined) nodes.push(<Text key={key++} style={[styles.code, codeColors]}>{match[2]}</Text>);
     else if (match[3] !== undefined) nodes.push(<Text key={key++} style={styles.italic}>{match[3]}</Text>);
     else if (match[4] !== undefined) nodes.push(<Text key={key++} style={styles.italic}>{match[4]}</Text>);
     lastIndex = pattern.lastIndex;
@@ -66,6 +67,7 @@ function renderInline(text: string): ReactNode[] {
 }
 
 export function MarkdownText({ content, tone = 'text', variant = 'body' }: MarkdownTextProps) {
+  const { colors } = useAppTheme();
   const blocks = parseBlocks(content);
   if (blocks.length === 0) return null;
 
@@ -76,11 +78,11 @@ export function MarkdownText({ content, tone = 'text', variant = 'body' }: Markd
           return (
             <View key={index} style={styles.listRow}>
               <AppText variant={variant} tone={tone} style={styles.marker}>{block.type === 'numbered' ? block.marker : '•'}</AppText>
-              <AppText variant={variant} tone={tone} style={styles.listText}>{renderInline(block.text)}</AppText>
+              <AppText variant={variant} tone={tone} style={styles.listText}>{renderInline(block.text, { backgroundColor: colors.surfaceSecondary, color: colors.text })}</AppText>
             </View>
           );
         }
-        return <AppText key={index} variant={variant} tone={tone} style={index > 0 ? styles.paragraphSpacing : undefined}>{renderInline(block.text)}</AppText>;
+        return <AppText key={index} variant={variant} tone={tone} style={index > 0 ? styles.paragraphSpacing : undefined}>{renderInline(block.text, { backgroundColor: colors.surfaceSecondary, color: colors.text })}</AppText>;
       })}
     </View>
   );
@@ -94,5 +96,5 @@ const styles = StyleSheet.create({
   listText: { flex: 1 },
   bold: { fontWeight: '700' },
   italic: { fontStyle: 'italic' },
-  code: { fontFamily: 'monospace' }
+  code: { borderRadius: 4, fontFamily: 'monospace', paddingHorizontal: 3 }
 });

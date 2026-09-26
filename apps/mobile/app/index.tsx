@@ -1,6 +1,7 @@
-import { ActivityIndicator, StyleSheet, useColorScheme } from 'react-native';
+import { useAppTheme } from '../lib/app-theme';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect, router } from 'expo-router';
-import { colors, spacing, type Theme } from '@familyapp/config';
+import { spacing } from '@familyapp/config';
 
 import { AppText } from '../components/AppText';
 import { BrandMark } from '../components/BrandMark';
@@ -11,8 +12,7 @@ import { useAuth } from '../lib/use-auth';
 
 export default function IndexScreen() {
   const { status } = useAuth();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   if (status === 'loading') {
     return <Screen contentStyle={styles.loading}><ActivityIndicator color={theme.primary} /><AppText variant="caption" tone="mutedText" style={styles.loadingText}>Checking your private space…</AppText></Screen>;

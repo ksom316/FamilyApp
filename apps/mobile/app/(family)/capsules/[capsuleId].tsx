@@ -1,11 +1,13 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
 import { AuthorizedImage } from '../../../components/AuthorizedImage';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
+import { FadeInView, PressableScale } from '../../../components/Motion';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
@@ -48,8 +50,7 @@ export default function TimeCapsuleDetailScreen() {
   const family = useCurrentFamily();
   const params = useLocalSearchParams<{ capsuleId: string }>();
   const capsuleId = Array.isArray(params.capsuleId) ? params.capsuleId[0] : params.capsuleId;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const { width } = useWindowDimensions();
   const [capsule, setCapsule] = useState<TimeCapsuleDetail | null>(null);
   const [memories, setMemories] = useState<FamilyMemory[]>([]);
@@ -162,7 +163,7 @@ export default function TimeCapsuleDetailScreen() {
           <AppText variant="eyebrow" tone="secondary">Sealed for the future</AppText>
           <AppText variant="title" align="center" style={styles.capsuleTitle}>{capsule.title}</AppText>
           <View style={styles.creatorRow}>
-            <Avatar name={capsule.createdBy.displayName} imageUrl={capsule.createdBy.avatar} size={32} />
+            <MemberAvatar member={capsule.createdBy} familyId={family.familyId} size={32} />
             <AppText variant="caption" tone="mutedText">Created by {capsule.createdBy.displayName}</AppText>
           </View>
           <AppText variant="body" align="center" style={styles.unlockDate}>Unlocks {formatUnlock(capsule.unlockAt)}</AppText>
@@ -181,13 +182,13 @@ export default function TimeCapsuleDetailScreen() {
           </View>
         </Card>
       ) : (
-        <>
+        <FadeInView distance={10}>
           <Card style={[styles.openedHero, { backgroundColor: theme.successSoft }]}>
             <View style={[styles.openedMark, { backgroundColor: theme.success }]}><AppText variant="title" style={{ color: theme.textOnPrimary }}>✦</AppText></View>
             <AppText variant="eyebrow" tone="success">Opened time capsule</AppText>
             <AppText variant="title" align="center" style={styles.capsuleTitle}>{capsule.title}</AppText>
             <View style={styles.creatorRow}>
-              <Avatar name={capsule.createdBy.displayName} imageUrl={capsule.createdBy.avatar} size={32} />
+              <MemberAvatar member={capsule.createdBy} familyId={family.familyId} size={32} />
               <AppText variant="caption" tone="mutedText">Created by {capsule.createdBy.displayName}</AppText>
             </View>
             <AppText variant="caption" tone="mutedText" align="center" style={styles.openedDate}>Unlocked {formatUnlock(capsule.unlockAt)}</AppText>
@@ -229,7 +230,7 @@ export default function TimeCapsuleDetailScreen() {
             {capsule.memories.length ? (
               <View style={styles.memoryGrid}>
                 {capsule.memories.map((memory) => (
-                  <Pressable
+                  <PressableScale
                     key={memory.id}
                     accessibilityRole="button"
                     onPress={() => router.push(`/(family)/memories/${memory.id}` as never)}
@@ -244,14 +245,14 @@ export default function TimeCapsuleDetailScreen() {
                         </AppText>
                       </View>
                     </Card>
-                  </Pressable>
+                  </PressableScale>
                 ))}
               </View>
             ) : (
               <Card style={styles.noMemories}><AppText variant="body" tone="mutedText">No memories were attached to this capsule.</AppText></Card>
             )}
           </View>
-        </>
+        </FadeInView>
       )}
     </Screen>
   );

@@ -1,6 +1,7 @@
+import { useAppTheme } from '../lib/app-theme';
 import { useEffect, useState } from 'react';
-import { Image, Platform, StyleSheet, Text, useColorScheme, View } from 'react-native';
-import { colors, typography, type Theme } from '@familyapp/config';
+import { Image, Platform, StyleSheet, Text, View } from 'react-native';
+import { typography } from '@familyapp/config';
 
 import { FamilyAppAvatar } from './FamilyAppAvatar';
 import { apiFetch } from '../lib/api';
@@ -57,8 +58,7 @@ export function MemberAvatar({ member, familyId, size = 'medium' }: { member: Me
 }
 
 function InitialsCircle({ name, imageUrl, size }: { name?: string | null; imageUrl?: string | null; size: number }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const initials = initialsFor(name);
   return (
     <View accessibilityLabel={`${name ?? 'FamilyApp'} avatar`} style={[styles.base, { backgroundColor: theme.primarySoft, borderRadius: size / 2, height: size, width: size }]}>

@@ -1,9 +1,9 @@
-import { StyleSheet, Text, useColorScheme, View } from 'react-native';
-import { colors, radius, spacing, typography, type Theme } from '@familyapp/config';
+import { useAppTheme } from '../lib/app-theme';
+import { StyleSheet, Text, View } from 'react-native';
+import { radius, spacing, typography } from '@familyapp/config';
 
 export function BrandMark({ compact = false }: { compact?: boolean }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return <View style={styles.row}><View style={[styles.mark, { backgroundColor: theme.primary, borderRadius: compact ? 10 : 14 }]}><View style={[styles.dot, { backgroundColor: theme.accent }]} /><View style={[styles.dot, styles.dotSmall, { backgroundColor: theme.secondary }]} /></View><Text style={[styles.name, { color: theme.text, fontSize: compact ? typography.size.lg : typography.size.xl }]}>Family<Text style={{ color: theme.primary }}>App</Text></Text></View>;
 }
 

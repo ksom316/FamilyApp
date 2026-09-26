@@ -1,12 +1,14 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
+import { AnimatedProgress, PressableScale } from '../../../components/Motion';
 import { Screen } from '../../../components/Screen';
 import { useCurrentFamily } from '../../../lib/family-context';
 import { closeFamilyPoll, deleteFamilyPoll, getFamilyPoll, PollApiError, voteOnFamilyPoll, type Poll } from '../../../lib/polls';
@@ -29,8 +31,7 @@ export default function PollDetailScreen() {
   const family = useCurrentFamily();
   const params = useLocalSearchParams<{ pollId: string }>();
   const pollId = Array.isArray(params.pollId) ? params.pollId[0] : params.pollId;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   const [poll, setPoll] = useState<Poll | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -164,7 +165,7 @@ export default function PollDetailScreen() {
         {poll.description ? <AppText variant="body" tone="mutedText" style={styles.description}>{poll.description}</AppText> : null}
 
         <View style={styles.personRow}>
-          <Avatar name={poll.createdBy.displayName} imageUrl={poll.createdBy.avatar} size={28} />
+          <MemberAvatar member={poll.createdBy} familyId={family.familyId} size={28} />
           <AppText variant="caption" tone="mutedText">
             Started by {poll.createdBy.displayName}
             {poll.closedAt ? ` · Closed ${formatDateTime(poll.closedAt)}` : poll.closesAt ? ` · ${poll.isClosed ? 'Closed' : 'Closes'} ${formatDateTime(poll.closesAt)}` : ''}
@@ -179,7 +180,7 @@ export default function PollDetailScreen() {
           const selected = selectedOptionId === option.id;
           const mine = poll.myOptionId === option.id;
           return (
-            <Pressable
+            <PressableScale
               key={option.id}
               accessibilityRole="radio"
               accessibilityState={{ selected, disabled: poll.isClosed }}
@@ -192,9 +193,9 @@ export default function PollDetailScreen() {
                 <AppText variant="caption" tone="mutedText">{option.votes} · {option.percentage}%</AppText>
               </View>
               <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
-                <View style={[styles.barFill, { width: `${option.percentage}%`, backgroundColor: selected ? theme.primary : theme.secondary }]} />
+                <AnimatedProgress color={selected ? theme.primary : theme.secondary} percentage={option.percentage} />
               </View>
-            </Pressable>
+            </PressableScale>
           );
         })}
       </View>

@@ -1,6 +1,14 @@
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 
-export type PlanPerson = { memberId: string; displayName: string; avatar: string | null };
+export type PlanPerson = {
+  memberId: string;
+  displayName: string;
+  avatar: string | null;
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
+};
 
 export type FamilyEvent = {
   id: string;

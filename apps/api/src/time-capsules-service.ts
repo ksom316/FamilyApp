@@ -169,7 +169,14 @@ const capsuleMetadataSelection = {
   unlockAt: familyTimeCapsules.unlockAt,
   createdAt: familyTimeCapsules.createdAt,
   updatedAt: familyTimeCapsules.updatedAt,
-  createdBy: { memberId: familyMembers.id, displayName: users.name, avatar: users.image }
+  createdBy: {
+    memberId: familyMembers.id,
+    displayName: users.name,
+    avatar: users.image,
+    identityType: users.identityType,
+    avatarConfig: users.avatarConfig,
+    hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
+  }
 };
 
 async function selectCapsuleMetadata(db: Database, familyId: string, capsuleId: string) {

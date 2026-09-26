@@ -1,11 +1,11 @@
-import { ScrollView, StyleSheet, useColorScheme, useWindowDimensions, View, type ViewStyle } from 'react-native';
-import { colors, spacing, type Theme } from '@familyapp/config';
+import { useAppTheme } from '../lib/app-theme';
+import { ScrollView, StyleSheet, useWindowDimensions, View, type ViewStyle } from 'react-native';
+import { spacing } from '@familyapp/config';
 
 export type ScreenProps = { children: React.ReactNode; scroll?: boolean; contentStyle?: ViewStyle; maxWidth?: number };
 
 export function Screen({ children, scroll = false, contentStyle, maxWidth = 1180 }: ScreenProps) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const { width } = useWindowDimensions();
   const horizontalPadding = width >= 900 ? spacing.xxl : spacing.lg;
   const content = <View style={[styles.content, { maxWidth, paddingHorizontal: horizontalPadding }, contentStyle]}>{children}</View>;

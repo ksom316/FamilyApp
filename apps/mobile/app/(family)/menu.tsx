@@ -1,10 +1,11 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
-import { Avatar } from '../../components/Avatar';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { DateTimeField } from '../../components/DateTimeField';
@@ -106,8 +107,7 @@ function findMeal(menu: Menu | null, date: string, type: MealType) {
 export default function MenuScreen() {
   const family = useCurrentFamily();
   const { width } = useWindowDimensions();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const isWide = width >= 760;
 
   const defaultWeekStart = formatLocalDateOnly(mondayOfLocalDate(new Date()));
@@ -359,7 +359,7 @@ export default function MenuScreen() {
                 </View>
                 {menu.title ? <AppText variant="label">{menu.title}</AppText> : null}
                 <View style={styles.personRow}>
-                  <Avatar name={menu.createdBy.displayName} imageUrl={menu.createdBy.avatar} size={20} />
+                  <MemberAvatar member={menu.createdBy} familyId={family.familyId} size={20} />
                   <AppText variant="caption" tone="mutedText">Started by {menu.createdBy.displayName}</AppText>
                 </View>
               </View>
@@ -408,8 +408,7 @@ export default function MenuScreen() {
 }
 
 function Segment({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -423,8 +422,7 @@ function Segment({ label, active, onPress }: { label: string; active: boolean; o
 }
 
 function TodayCard({ menu, today, onEdit }: { menu: Menu; today: string; onEdit: (type: MealType) => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Card elevated style={[styles.todayCard, { backgroundColor: theme.primarySoft, borderColor: theme.primary }]}>
       <AppText variant="eyebrow" tone="primary">Today · {formatDayHeading(today)}</AppText>
@@ -453,8 +451,7 @@ function DayCard({ date, isToday, menu, editingType, onStartEdit, onCancelEdit, 
   onSave: (type: MealType, name: string, note: string) => Promise<void>;
   onClear: (type: MealType) => Promise<void>;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Card style={[styles.dayCard, isToday && { borderColor: theme.primary }]}>
       <AppText variant="label" tone={isToday ? 'primary' : 'text'}>{formatDayHeading(date)}</AppText>
@@ -594,8 +591,7 @@ function MenuHomePanel({ familyId, onOpenSavedMenu, onGoToWeekly, onGoToSaved }:
   onGoToWeekly: () => void;
   onGoToSaved: () => void;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [home, setHome] = useState<MenuHome | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -673,8 +669,7 @@ function MenuHomePanel({ familyId, onOpenSavedMenu, onGoToWeekly, onGoToSaved }:
 }
 
 function ActiveMenuCard({ menu, onOpen }: { menu: ActiveMenuHomeCard; onOpen: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable accessibilityRole="button" onPress={onOpen}>
       <Card style={styles.savedCard}>
@@ -701,8 +696,7 @@ function ActiveMenuCard({ menu, onOpen }: { menu: ActiveMenuHomeCard; onOpen: ()
 }
 
 function OtherMenuRow({ menu, onOpen }: { menu: SavedMenuSummary; onOpen: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable accessibilityRole="button" onPress={onOpen}>
       <Card style={styles.otherMenuRow}>
@@ -723,8 +717,7 @@ function SavedMenusPanel({ familyId, myMemberId, myHouseholds, familyMembersList
   onOpenIdChange: (id: string | null) => void;
   onAppliedToWeek: () => void;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [savedMenus, setSavedMenus] = useState<SavedMenuSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -858,6 +851,7 @@ function SavedMenusPanel({ familyId, myMemberId, myHouseholds, familyMembersList
               onDuplicate={() => void handleDuplicate(menu.id)}
               onSetActive={(active) => void handleSetActive(menu.id, active)}
               onDelete={() => confirmDelete(menu.id, menu.name)}
+              familyId={familyId}
             />
           ))}
         </View>
@@ -866,7 +860,7 @@ function SavedMenusPanel({ familyId, myMemberId, myHouseholds, familyMembersList
   );
 }
 
-function SavedMenuCard({ menu, myMemberId, busy, onOpen, onDuplicate, onSetActive, onDelete }: {
+function SavedMenuCard({ menu, myMemberId, busy, onOpen, onDuplicate, onSetActive, onDelete, familyId }: {
   menu: SavedMenuSummary;
   myMemberId: string;
   busy: boolean;
@@ -874,9 +868,9 @@ function SavedMenuCard({ menu, myMemberId, busy, onOpen, onDuplicate, onSetActiv
   onDuplicate: () => void;
   onSetActive: (active: boolean) => void;
   onDelete: () => void;
+  familyId: string;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const isCreator = menu.createdByMemberId === myMemberId;
   return (
     <Card style={styles.savedCard}>
@@ -890,7 +884,7 @@ function SavedMenuCard({ menu, myMemberId, busy, onOpen, onDuplicate, onSetActiv
         <AppText variant="label" style={styles.savedCardName}>{menu.name}</AppText>
         {menu.description ? <AppText variant="caption" tone="mutedText" numberOfLines={2}>{menu.description}</AppText> : null}
         <View style={styles.personRow}>
-          <Avatar name={menu.createdBy.displayName} imageUrl={menu.createdBy.avatar} size={20} />
+          <MemberAvatar member={menu.createdBy} familyId={familyId} size={20} />
           <AppText variant="caption" tone="mutedText">{menu.createdBy.displayName}</AppText>
         </View>
       </Pressable>
@@ -903,9 +897,8 @@ function SavedMenuCard({ menu, myMemberId, busy, onOpen, onDuplicate, onSetActiv
   );
 }
 
-function MemberChip({ member, active, onPress }: { member: { id: string; displayName: string; avatar: string | null }; active: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+function MemberChip({ member, active, onPress, familyId }: { member: FamilyMember; active: boolean; onPress: () => void; familyId: string }) {
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       accessibilityRole="checkbox"
@@ -913,13 +906,13 @@ function MemberChip({ member, active, onPress }: { member: { id: string; display
       onPress={onPress}
       style={[styles.memberChip, { backgroundColor: active ? theme.primarySoft : theme.input, borderColor: active ? theme.primary : theme.border }]}
     >
-      <Avatar name={member.displayName} imageUrl={member.avatar} size={20} />
+      <MemberAvatar member={{ ...member, memberId: member.id }} familyId={familyId} size={20} />
       <AppText variant="label" tone={active ? 'primary' : 'text'}>{member.displayName}</AppText>
     </Pressable>
   );
 }
 
-function AudiencePicker({ audienceType, setAudienceType, householdId, setHouseholdId, memberIds, setMemberIds, myHouseholds, familyMembersList }: {
+function AudiencePicker({ audienceType, setAudienceType, householdId, setHouseholdId, memberIds, setMemberIds, myHouseholds, familyMembersList, familyId }: {
   audienceType: AudienceType;
   setAudienceType: (type: AudienceType) => void;
   householdId: string | null;
@@ -928,6 +921,7 @@ function AudiencePicker({ audienceType, setAudienceType, householdId, setHouseho
   setMemberIds: (ids: string[]) => void;
   myHouseholds: Household[];
   familyMembersList: FamilyMember[];
+  familyId: string;
 }) {
   function toggleMember(id: string) {
     setMemberIds(memberIds.includes(id) ? memberIds.filter((memberId) => memberId !== id) : [...memberIds, id]);
@@ -959,9 +953,10 @@ function AudiencePicker({ audienceType, setAudienceType, householdId, setHouseho
           {familyMembersList.map((member) => (
             <MemberChip
               key={member.id}
-              member={{ id: member.id, displayName: member.displayName, avatar: member.avatar }}
+              member={member}
               active={memberIds.includes(member.id)}
               onPress={() => toggleMember(member.id)}
+              familyId={familyId}
             />
           ))}
         </View>
@@ -1028,6 +1023,7 @@ function CreateSavedMenuCard({ familyId, myHouseholds, familyMembersList, onCanc
         setMemberIds={setMemberIds}
         myHouseholds={myHouseholds}
         familyMembersList={familyMembersList}
+        familyId={familyId}
       />
 
       {error ? <AppText variant="caption" tone="danger" style={styles.formError}>{error}</AppText> : null}
@@ -1051,8 +1047,7 @@ function SavedMenuDetailPanel({ familyId, myMemberId, savedMenuId, myHouseholds,
 }) {
   const { width } = useWindowDimensions();
   const isWide = width >= 760;
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [detail, setDetail] = useState<SavedMenuDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingMeta, setEditingMeta] = useState(false);
@@ -1156,7 +1151,7 @@ function SavedMenuDetailPanel({ familyId, myMemberId, savedMenuId, myHouseholds,
           <AppText variant="display" style={styles.listName}>{detail.name}</AppText>
           {detail.description ? <AppText variant="body" tone="mutedText" style={styles.description}>{detail.description}</AppText> : null}
           <View style={styles.personRow}>
-            <Avatar name={detail.createdBy.displayName} imageUrl={detail.createdBy.avatar} size={20} />
+            <MemberAvatar member={detail.createdBy} familyId={familyId} size={20} />
             <AppText variant="caption" tone="mutedText">Created by {detail.createdBy.displayName}</AppText>
           </View>
           {isCreator ? <View style={styles.headerActions}><Button label="Edit menu" variant="quiet" onPress={() => setEditingMeta(true)} /></View> : null}
@@ -1203,8 +1198,7 @@ function SavedDayCard({ label, day, meals, editingType, onStartEdit, onCancelEdi
   onSave: (type: MealType, name: string, note: string) => Promise<void>;
   onClear: (type: MealType) => Promise<void>;
 }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Card style={styles.dayCard}>
       <AppText variant="label">{label}</AppText>
@@ -1349,6 +1343,7 @@ function SavedMenuMetaEditor({ familyId, menu, myHouseholds, familyMembersList, 
         setMemberIds={setMemberIds}
         myHouseholds={myHouseholds}
         familyMembersList={familyMembersList}
+        familyId={familyId}
       />
 
       {error ? <AppText variant="caption" tone="danger" style={styles.formError}>{error}</AppText> : null}

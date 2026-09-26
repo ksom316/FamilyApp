@@ -1,7 +1,15 @@
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 import type { ShoppingListDetail } from './shopping';
 
-export type MenuPerson = { memberId: string; displayName: string; avatar: string | null };
+export type MenuPerson = {
+  memberId: string;
+  displayName: string;
+  avatar: string | null;
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
+};
 export type MealType = 'breakfast' | 'lunch' | 'dinner';
 
 export type Meal = {

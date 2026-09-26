@@ -1,7 +1,8 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
 import { Avatar } from '../../components/Avatar';
@@ -32,8 +33,7 @@ function activityTime(value: string) {
 // actually opens /(family)/chat/family (see that screen).
 export default function ChatHubScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
 

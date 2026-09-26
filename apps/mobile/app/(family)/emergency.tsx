@@ -1,10 +1,11 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, typography, type Theme } from '@familyapp/config';
+import { radius, spacing, typography, type Theme } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
-import { Avatar } from '../../components/Avatar';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
@@ -34,8 +35,7 @@ function formatWhen(value: string) {
 
 export default function EmergencyHubScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   const [emergencies, setEmergencies] = useState<EmergencyList | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -159,7 +159,7 @@ export default function EmergencyHubScreen() {
         </Card>
       ) : (
         <View style={styles.list}>
-          {active.map((incident) => <IncidentCard key={incident.id} incident={incident} theme={theme} />)}
+          {active.map((incident) => <IncidentCard key={incident.id} incident={incident} theme={theme} familyId={family.familyId} />)}
         </View>
       )}
 
@@ -173,7 +173,7 @@ export default function EmergencyHubScreen() {
         </Card>
       ) : (
         <View style={styles.list}>
-          {resolved.map((incident) => <IncidentCard key={incident.id} incident={incident} theme={theme} />)}
+          {resolved.map((incident) => <IncidentCard key={incident.id} incident={incident} theme={theme} familyId={family.familyId} />)}
         </View>
       )}
     </Screen>
@@ -181,8 +181,7 @@ export default function EmergencyHubScreen() {
 }
 
 function TypeChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <AppText
       accessibilityRole="button"
@@ -196,12 +195,12 @@ function TypeChip({ label, active, onPress }: { label: string; active: boolean; 
   );
 }
 
-function IncidentCard({ incident, theme }: { incident: EmergencyIncident; theme: Theme }) {
+function IncidentCard({ incident, theme, familyId }: { incident: EmergencyIncident; theme: Theme; familyId: string }) {
   return (
     <Pressable accessibilityRole="button" onPress={() => router.push(`/(family)/emergency/${incident.id}` as never)}>
       <Card style={styles.incidentCard}>
         <View style={styles.personRow}>
-          <Avatar name={incident.createdBy.displayName} imageUrl={incident.createdBy.avatar} size={40} />
+          <MemberAvatar member={incident.createdBy} familyId={familyId} size={40} />
           <View style={styles.detailCopy}>
             <AppText variant="label">{incident.createdBy.displayName}</AppText>
             <AppText variant="body" tone="danger">{EMERGENCY_TYPE_LABELS[incident.emergencyType]}</AppText>

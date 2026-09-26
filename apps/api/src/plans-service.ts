@@ -85,12 +85,26 @@ export async function listPlans(db: Database, userId: string, familyId: string) 
     db.select().from(familyEvents).where(and(eq(familyEvents.familyId, familyId), gte(familyEvents.startsAt, now))).orderBy(asc(familyEvents.startsAt)),
     db.select().from(familyTasks).where(eq(familyTasks.familyId, familyId)).orderBy(sql`${familyTasks.completedAt} is not null`, asc(familyTasks.dueAt)),
     db
-      .select({ id: familyMembers.id, displayName: users.name, avatar: users.image })
+      .select({
+        id: familyMembers.id,
+        displayName: users.name,
+        avatar: users.image,
+        identityType: users.identityType,
+        avatarConfig: users.avatarConfig,
+        hasPhoto: sql<boolean>`${users.photoObjectKey} is not null`
+      })
       .from(familyMembers)
       .innerJoin(users, eq(familyMembers.userId, users.id))
       .where(eq(familyMembers.familyId, familyId))
   ]);
-  const people = new Map(members.map((member) => [member.id, { memberId: member.id, displayName: member.displayName, avatar: member.avatar }]));
+  const people = new Map(members.map((member) => [member.id, {
+    memberId: member.id,
+    displayName: member.displayName,
+    avatar: member.avatar,
+    identityType: member.identityType,
+    avatarConfig: member.avatarConfig,
+    hasPhoto: member.hasPhoto
+  }]));
   return {
     events: events.map((event) => ({ ...event, createdBy: people.get(event.createdByMemberId)! })),
     tasks: tasks.map((task) => ({

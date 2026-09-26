@@ -1,13 +1,15 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { createTheme, radius, spacing, themeNames, themePersonalities, type AppearanceMode, type Theme, type ThemeName } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { FamilyAppAvatar } from '../../components/FamilyAppAvatar';
 import { MemberAvatar } from '../../components/MemberAvatar';
+import { FadeInView, PressableScale } from '../../components/Motion';
 import { Screen } from '../../components/Screen';
 import { useCurrentFamily } from '../../lib/family-context';
 import { requestAttentionRefresh } from '../../lib/navigation-attention';
@@ -48,8 +50,7 @@ const OPTION_LABELS: Record<string, string> = {
 export default function ProfileScreen() {
   const family = useCurrentFamily();
   const { data: session } = useAuth();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { appearance, colors: theme, resolvedAppearance, setAppearance, setTheme, theme: themeName } = useAppTheme();
 
   const [identity, setIdentity] = useState<ProfileIdentity | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +152,22 @@ export default function ProfileScreen() {
         Choose how you appear across FamilyApp — a photo, a FamilyApp Avatar, or your initials.
       </AppText>
 
+      <FadeInView distance={6}>
+      <Card elevated style={styles.appearanceCard}>
+        <AppText variant="eyebrow" tone="primary">Appearance</AppText>
+        <AppText variant="heading" style={styles.sectionTitle}>Make FamilyApp yours</AppText>
+        <AppText variant="body" tone="mutedText" style={styles.sectionIntro}>Choose how bright the app feels, then add a color personality. Changes apply everywhere right away.</AppText>
+        <View accessibilityRole="radiogroup" style={styles.appearanceChoices}>
+          {(['system', 'light', 'dark'] as const).map((mode) => <AppearanceChoice key={mode} mode={mode} selected={appearance === mode} onPress={() => setAppearance(mode)} />)}
+        </View>
+        <View style={[styles.sectionDivider, { backgroundColor: theme.divider }]} />
+        <AppText variant="eyebrow" tone="secondary">Theme</AppText>
+        <View accessibilityRole="radiogroup" style={styles.themeGrid}>
+          {themeNames.map((name) => <ThemeChoice key={name} name={name} appearance={resolvedAppearance} selected={themeName === name} onPress={() => setTheme(name)} />)}
+        </View>
+      </Card>
+      </FadeInView>
+
       {error ? (
         <Card style={[styles.messageCard, { backgroundColor: theme.dangerSoft }]}>
           <AppText variant="caption" tone="danger">{error}</AppText>
@@ -213,6 +230,47 @@ export default function ProfileScreen() {
   );
 }
 
+function AppearanceChoice({ mode, selected, onPress }: { mode: AppearanceMode; selected: boolean; onPress: () => void }) {
+  const { colors } = useAppTheme();
+  const labels: Record<AppearanceMode, { name: string; mark: string }> = {
+    system: { name: 'System', mark: '◐' }, light: { name: 'Light', mark: '☀' }, dark: { name: 'Dark', mark: '☾' }
+  };
+  return (
+    <PressableScale accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.appearanceChoice, { backgroundColor: selected ? colors.primarySoft : colors.surfaceSecondary, borderColor: selected ? colors.primary : colors.border }]}>
+      <AppText variant="heading" tone={selected ? 'primary' : 'mutedText'}>{labels[mode].mark}</AppText>
+      <AppText variant="label" tone={selected ? 'primary' : 'text'}>{labels[mode].name}</AppText>
+      {selected ? <AppText variant="caption" tone="primary">Selected</AppText> : null}
+    </PressableScale>
+  );
+}
+
+function ThemeChoice({ name, appearance, selected, onPress }: { name: ThemeName; appearance: 'light' | 'dark'; selected: boolean; onPress: () => void }) {
+  const { colors } = useAppTheme();
+  const preview = createTheme(name, appearance);
+  return (
+    <PressableScale accessibilityRole="radio" accessibilityLabel={`${themePersonalities[name].label} theme`} accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.themeChoice, { backgroundColor: colors.surface, borderColor: selected ? colors.primary : colors.border }]}>
+      <View style={styles.themeChoiceHeader}>
+        <AppText variant="label" tone={selected ? 'primary' : 'text'}>{themePersonalities[name].label}</AppText>
+        {selected ? <View style={[styles.selectedMark, { backgroundColor: colors.primary }]}><AppText variant="caption" style={{ color: colors.onPrimary }}>✓</AppText></View> : null}
+      </View>
+      <View style={[styles.themePreview, { backgroundColor: preview.background, borderColor: preview.border }]}>
+        <View style={[styles.previewNav, { backgroundColor: preview.navigationBackground, borderColor: preview.border }]}>
+          <View style={[styles.previewNavDot, { backgroundColor: preview.primary }]} />
+          <View style={[styles.previewNavLine, { backgroundColor: preview.navigationInactive }]} />
+          <View style={[styles.previewNavLineShort, { backgroundColor: preview.secondary }]} />
+        </View>
+        <View style={styles.previewContent}>
+          <View style={[styles.previewMiniCard, { backgroundColor: preview.surface, borderColor: preview.border }]}>
+            <View style={[styles.previewTextLine, { backgroundColor: preview.textMuted }]} />
+            <View style={[styles.previewAccentLine, { backgroundColor: preview.primary }]} />
+          </View>
+          <View style={[styles.previewPill, { backgroundColor: preview.accentSoft }]}><View style={[styles.previewPillDot, { backgroundColor: preview.accent }]} /></View>
+        </View>
+      </View>
+    </PressableScale>
+  );
+}
+
 function OptionCard({ title, detail, active, busy, onPress, theme }: { title: string; detail: string; active: boolean; busy: boolean; onPress: () => void; theme: Theme }) {
   return (
     <Pressable accessibilityRole="button" disabled={busy} onPress={onPress} style={{ flexGrow: 1, minWidth: 200 }}>
@@ -266,8 +324,7 @@ function AvatarEditor({ config, onChange, saving, onCancel, onSave }: {
 }
 
 function OptionChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.chip, { backgroundColor: selected ? theme.primarySoft : theme.input, borderColor: selected ? theme.primary : theme.border }]}>
       <AppText variant="caption" tone={selected ? 'primary' : 'text'}>{label}</AppText>
@@ -279,6 +336,27 @@ const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl, paddingTop: spacing.xl },
   title: { marginTop: spacing.xs },
   subtitle: { marginTop: spacing.sm, maxWidth: 560 },
+  appearanceCard: { marginTop: spacing.xl, padding: spacing.xl },
+  sectionTitle: { marginTop: spacing.xs },
+  sectionIntro: { marginTop: spacing.sm, maxWidth: 580 },
+  appearanceChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.lg },
+  appearanceChoice: { alignItems: 'center', borderRadius: radius.md, borderWidth: 1, flexBasis: 140, flexGrow: 1, gap: spacing.xs, minHeight: 112, padding: spacing.md },
+  sectionDivider: { height: 1, marginVertical: spacing.xl },
+  themeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  themeChoice: { borderRadius: radius.md, borderWidth: 1, flexBasis: 190, flexGrow: 1, gap: spacing.sm, minWidth: 154, padding: spacing.md },
+  themeChoiceHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  selectedMark: { alignItems: 'center', borderRadius: radius.pill, height: 22, justifyContent: 'center', width: 22 },
+  themePreview: { borderRadius: radius.sm, borderWidth: 1, flexDirection: 'row', height: 72, overflow: 'hidden' },
+  previewNav: { borderRightWidth: 1, gap: 6, padding: 8, width: 42 },
+  previewNavDot: { borderRadius: radius.pill, height: 10, width: 10 },
+  previewNavLine: { borderRadius: radius.pill, height: 4, marginTop: 2, opacity: 0.65, width: 24 },
+  previewNavLineShort: { borderRadius: radius.pill, height: 4, opacity: 0.8, width: 17 },
+  previewContent: { flex: 1, gap: 5, padding: 8 },
+  previewMiniCard: { borderRadius: 7, borderWidth: 1, flex: 1, justifyContent: 'center', paddingHorizontal: 7 },
+  previewTextLine: { borderRadius: radius.pill, height: 4, opacity: 0.55, width: '62%' },
+  previewAccentLine: { borderRadius: radius.pill, height: 5, marginTop: 5, width: '82%' },
+  previewPill: { alignItems: 'center', alignSelf: 'flex-start', borderRadius: radius.pill, height: 10, justifyContent: 'center', width: 32 },
+  previewPillDot: { borderRadius: radius.pill, height: 5, width: 18 },
   messageCard: { marginTop: spacing.lg, padding: spacing.md },
   loading: { alignItems: 'center', paddingVertical: spacing.xxl },
   previewCard: { alignItems: 'center', gap: spacing.xs, marginTop: spacing.xl, padding: spacing.xl },

@@ -1,10 +1,11 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { DateTimeField } from '../../../components/DateTimeField';
@@ -38,8 +39,7 @@ function leadingOption(poll: Poll) {
 
 export default function PollsScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [polls, setPolls] = useState<Poll[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'open' | 'closed'>('open');
@@ -126,7 +126,7 @@ export default function PollsScreen() {
             </Card>
           ) : (
             <View style={styles.list}>
-              {visible.map((poll) => <PollCard key={poll.id} poll={poll} />)}
+              {visible.map((poll) => <PollCard key={poll.id} poll={poll} familyId={family.familyId} />)}
             </View>
           )}
         </>
@@ -136,8 +136,7 @@ export default function PollsScreen() {
 }
 
 function Segment({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       accessibilityRole="tab"
@@ -150,9 +149,8 @@ function Segment({ label, active, onPress }: { label: string; active: boolean; o
   );
 }
 
-function PollCard({ poll }: { poll: Poll }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+function PollCard({ poll, familyId }: { poll: Poll; familyId: string }) {
+  const { colors: theme } = useAppTheme();
   const leading = leadingOption(poll);
   const targetLabel = poll.household ? poll.household.name : 'Whole family';
   const targetColor = poll.household ? theme.secondarySoft : theme.primarySoft;
@@ -167,7 +165,7 @@ function PollCard({ poll }: { poll: Poll }) {
         </View>
         <AppText variant="label" style={styles.pollQuestion}>{poll.question}</AppText>
         <View style={styles.personRow}>
-          <Avatar name={poll.createdBy.displayName} imageUrl={poll.createdBy.avatar} size={20} />
+          <MemberAvatar member={poll.createdBy} familyId={familyId} size={20} />
           <AppText variant="caption" tone="mutedText">{poll.createdBy.displayName} · {formatClosing(poll)}</AppText>
         </View>
         <AppText variant="caption" tone="mutedText" style={styles.pollSummary}>
@@ -300,8 +298,7 @@ function NewPollEditor({ familyId, myMemberId, onCancel, onCreated }: {
 }
 
 function TargetChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       accessibilityRole="button"

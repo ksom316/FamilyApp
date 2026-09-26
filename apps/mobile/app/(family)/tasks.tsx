@@ -1,7 +1,8 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
 import { Button } from '../../components/Button';
@@ -34,8 +35,7 @@ function formatDueAt(value: string) {
 
 export default function TasksScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   const [tasks, setTasks] = useState<TaskSummary[] | null>(null);
   const [members, setMembers] = useState<FamilyMember[]>([]);
@@ -184,8 +184,7 @@ export default function TasksScreen() {
 }
 
 function TabChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} onPress={onPress} style={[styles.chip, { backgroundColor: active ? theme.primarySoft : theme.input, borderColor: active ? theme.primary : theme.border }]}>
       <AppText variant="label" tone={active ? 'primary' : 'text'}>{label}</AppText>

@@ -1,8 +1,16 @@
 import { Platform } from 'react-native';
 
 import { apiFetch } from './api';
+import type { AvatarConfig } from './profile';
 
-export type CapsuleCreator = { memberId: string; displayName: string; avatar: string | null };
+export type CapsuleCreator = {
+  memberId: string;
+  displayName: string;
+  avatar: string | null;
+  identityType: string;
+  avatarConfig: AvatarConfig | null;
+  hasPhoto: boolean;
+};
 
 export type TimeCapsuleSummary = {
   id: string;

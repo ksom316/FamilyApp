@@ -1,12 +1,14 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, AppState, Easing, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing, type Theme, type ThemeName } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
 import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
+import { AnimatedNumber, FadeInView } from '../../components/Motion';
 import { Screen } from '../../components/Screen';
 import { getFamilyCheckIns, postCheckIn, type FamilyCheckIn } from '../../lib/check-ins';
 import { DailyBriefingApiError, getDailyBriefing, type DailyBriefing } from '../../lib/daily-briefing';
@@ -20,6 +22,7 @@ import { getFamilyPlans, type FamilyPlans } from '../../lib/plans';
 import { getFamilyTasks, type TaskSummary } from '../../lib/tasks';
 import { getFamilyTimeCapsules, type TimeCapsuleSummary } from '../../lib/time-capsules';
 import { useAuth } from '../../lib/use-auth';
+import { useReducedMotion } from '../../lib/motion';
 import { getWeeklyRecap, WeeklyRecapApiError, type WeeklyRecap } from '../../lib/weekly-recap';
 
 const BRIEFING_POLL_INTERVAL_MS = 60_000;
@@ -33,8 +36,7 @@ function greetingForHour(hour: number) {
 export default function FamilyHomeScreen() {
   const family = useCurrentFamily();
   const { data: session } = useAuth();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme, theme: themeName } = useAppTheme();
   const { width } = useWindowDimensions();
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [memberCountFailed, setMemberCountFailed] = useState(false);
@@ -57,6 +59,12 @@ export default function FamilyHomeScreen() {
   const [briefingError, setBriefingError] = useState<string | null>(null);
   const [weeklyRecap, setWeeklyRecap] = useState<WeeklyRecap | null>(null);
   const [weeklyRecapError, setWeeklyRecapError] = useState<string | null>(null);
+  const [motionFocused, setMotionFocused] = useState(false);
+
+  useFocusEffect(useCallback(() => {
+    setMotionFocused(true);
+    return () => setMotionFocused(false);
+  }, []));
 
   useEffect(() => {
     let active = true;
@@ -213,11 +221,16 @@ export default function FamilyHomeScreen() {
 
   return (
     <Screen scroll maxWidth={1080} contentStyle={styles.content}>
-      <View style={[styles.welcome, isWideHero && styles.welcomeWide]}>
+      <FadeInView style={[styles.welcome, isWideHero && styles.welcomeWide]}>
         <View style={styles.welcomeCopy}>
           <View style={styles.welcomeTopRow}>
             <AppText variant="eyebrow" tone="primary">{greetingForHour(new Date().getHours())}, {firstName}</AppText>
-            <Pressable accessibilityRole="button" onPress={() => router.push('/(family)/notifications' as never)} style={styles.notificationBell}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : 'Notifications'}
+              onPress={() => router.push('/(family)/notifications' as never)}
+              style={styles.notificationBell}
+            >
               <AppText variant="heading">🔔</AppText>
               {unreadNotifications > 0 ? (
                 <View style={[styles.notificationBadge, { backgroundColor: theme.danger }]}>
@@ -229,45 +242,41 @@ export default function FamilyHomeScreen() {
           <AppText variant="display" style={styles.title}>{family.familyName}</AppText>
           <AppText variant="body" tone="mutedText" style={styles.subtitle}>Your family’s home, all in one warm place.</AppText>
         </View>
-        <View style={[styles.welcomeArt, !isWideHero && styles.welcomeArtStacked, isWideHero && styles.welcomeArtWide, { backgroundColor: theme.accentSoft }]}>
-          <View style={[styles.artOrb, { backgroundColor: theme.primarySoft }]} />
-          <View style={[styles.artOrbSmall, { backgroundColor: theme.accent }]} />
-          <Avatar name={family.familyName} size={68} />
-        </View>
-      </View>
+        <HomeArtwork active={motionFocused} familyName={family.familyName} isWide={isWideHero} theme={theme} themeName={themeName} />
+      </FadeInView>
 
       {activeEmergencies && activeEmergencies.length > 0 ? (
-        <Card style={[styles.emergencyBanner, { backgroundColor: theme.dangerSoft, borderColor: theme.danger }]}>
+        <FadeInView delay={40} distance={0}><Card style={[styles.emergencyBanner, { backgroundColor: theme.dangerSoft, borderColor: theme.danger }]}>
           <View style={styles.emergencyBannerCopy}>
             <AppText variant="label" tone="danger">Family Emergency</AppText>
             <AppText variant="caption" tone="mutedText">{activeEmergencies.length} active alert{activeEmergencies.length === 1 ? '' : 's'}</AppText>
           </View>
           <Button label="View →" variant="quiet" onPress={() => router.push('/(family)/emergency' as never)} />
-        </Card>
+        </Card></FadeInView>
       ) : null}
 
-      <TodayBriefing briefing={briefing} error={briefingError} onRetry={() => void loadBriefing()} theme={theme} isCompact={isCompact} />
+      <FadeInView delay={70}><TodayBriefing briefing={briefing} error={briefingError} onRetry={() => void loadBriefing()} theme={theme} isCompact={isCompact} /></FadeInView>
 
-      <WeeklyRecapSection recap={weeklyRecap} error={weeklyRecapError} onRetry={() => void loadWeeklyRecap()} theme={theme} isCompact={isCompact} />
+      <FadeInView delay={110}><WeeklyRecapSection recap={weeklyRecap} error={weeklyRecapError} onRetry={() => void loadWeeklyRecap()} theme={theme} isCompact={isCompact} /></FadeInView>
 
-      <View style={[styles.overview, !isCompact && styles.overviewWide]}>
+      <FadeInView delay={150} style={[styles.overview, !isCompact && styles.overviewWide]}>
         <Card style={[styles.overviewCard, { backgroundColor: theme.primarySoft }]}>
           <AppText variant="caption" tone="mutedText">PEOPLE</AppText>
           <View style={styles.metricRow}>
-            {memberCount !== null ? <AppText variant="title" tone="primary">{memberCount}</AppText> : memberCountFailed ? <AppText variant="label" tone="mutedText">Unavailable</AppText> : <ActivityIndicator color={theme.primary} />}
+            {memberCount !== null ? <AppText variant="title" tone="primary"><AnimatedNumber value={memberCount} /></AppText> : memberCountFailed ? <AppText variant="label" tone="mutedText">Unavailable</AppText> : <ActivityIndicator color={theme.primary} />}
             <AppText variant="body" tone="mutedText">members</AppText>
           </View>
         </Card>
         <Card style={[styles.overviewCard, { backgroundColor: theme.secondarySoft }]}>
           <AppText variant="caption" tone="mutedText">UPCOMING</AppText>
-          <AppText variant="heading" style={styles.overviewTitle}>{plans ? plans.events.length : plansFailed ? '—' : '…'} events</AppText>
+          <AppText variant="heading" style={styles.overviewTitle}>{plans ? <><AnimatedNumber value={plans.events.length} /> events</> : plansFailed ? '— events' : '… events'}</AppText>
           <AppText variant="caption" tone="mutedText">{plans?.events[0] ? `Next: ${plans.events[0].title}` : plansFailed ? 'Unavailable right now' : 'Nothing scheduled yet'}</AppText>
         </Card>
         <Pressable accessibilityRole="button" onPress={() => router.push('/(family)/tasks' as never)} style={styles.overviewPressable}>
           <Card style={[styles.overviewCard, { backgroundColor: theme.successSoft }]}>
             <AppText variant="caption" tone="mutedText">TOGETHER</AppText>
             <AppText variant="heading" style={styles.overviewTitle}>
-              {myTasks ? (myOutstandingTasks.length === 0 ? 'All caught up' : `${myOutstandingTasks.length} task${myOutstandingTasks.length === 1 ? '' : 's'}`) : tasksFailed ? '—' : '…'}
+              {myTasks ? (myOutstandingTasks.length === 0 ? 'All caught up' : <><AnimatedNumber value={myOutstandingTasks.length} /> task{myOutstandingTasks.length === 1 ? '' : 's'}</>) : tasksFailed ? '—' : '…'}
             </AppText>
             <AppText variant="caption" tone="mutedText" numberOfLines={1}>
               {myTasks
@@ -276,7 +285,7 @@ export default function FamilyHomeScreen() {
             </AppText>
           </Card>
         </Pressable>
-      </View>
+      </FadeInView>
 
       <View style={styles.sectionHeader}>
         <View><AppText variant="heading">Make it yours</AppText><AppText variant="caption" tone="mutedText" style={styles.sectionSubtitle}>A few ways to get started</AppText></View>
@@ -631,6 +640,53 @@ function RecapStat({ label, theme }: { label: string; theme: Theme }) {
     <View style={[styles.recapStat, { backgroundColor: theme.primarySoft }]}>
       <AppText variant="label" tone="primary">{label}</AppText>
     </View>
+  );
+}
+
+function HomeArtwork({ active, familyName, isWide, theme, themeName }: { active: boolean; familyName: string; isWide: boolean; theme: Theme; themeName: ThemeName }) {
+  const reduced = useReducedMotion();
+  const drift = useRef(new Animated.Value(0)).current;
+  const character: Record<ThemeName, { duration: number; rotate: number; x: number; y: number; scale: number }> = {
+    family: { duration: 3800, rotate: 0.8, x: 1, y: -4, scale: 1.018 },
+    ocean: { duration: 4600, rotate: 0.35, x: 4, y: -5, scale: 1.012 },
+    nature: { duration: 4400, rotate: -0.7, x: 2, y: -4, scale: 1.014 },
+    sunset: { duration: 4100, rotate: 0.25, x: 1, y: -2, scale: 1.025 },
+    blossom: { duration: 4500, rotate: 1.1, x: 3, y: -3, scale: 1.014 },
+    lavender: { duration: 4700, rotate: -0.45, x: 2, y: -5, scale: 1.016 },
+    midnight: { duration: 5200, rotate: 0.3, x: 2, y: -2, scale: 1.012 }
+  };
+  const spec = character[themeName];
+
+  useEffect(() => {
+    if (reduced || !active) { drift.stopAnimation(); drift.setValue(0); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(drift, { duration: spec.duration, easing: Easing.inOut(Easing.sin), toValue: 1, useNativeDriver: true }),
+      Animated.timing(drift, { duration: spec.duration, easing: Easing.inOut(Easing.sin), toValue: 0, useNativeDriver: true })
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [active, drift, reduced, spec.duration]);
+
+  return (
+    <Animated.View style={[
+      styles.welcomeArt,
+      !isWide && styles.welcomeArtStacked,
+      isWide && styles.welcomeArtWide,
+      { backgroundColor: theme.accentSoft },
+      !reduced && {
+        opacity: drift.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }),
+        transform: [
+          { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [0, spec.x] }) },
+          { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [0, spec.y] }) },
+          { rotate: drift.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${spec.rotate}deg`] }) },
+          { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, spec.scale] }) }
+        ]
+      }
+    ]}>
+      <View style={[styles.artOrb, { backgroundColor: theme.primarySoft }]} />
+      <View style={[styles.artOrbSmall, { backgroundColor: theme.accent }]} />
+      <Avatar name={familyName} size={68} />
+    </Animated.View>
   );
 }
 

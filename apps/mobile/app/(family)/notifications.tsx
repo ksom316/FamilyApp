@@ -1,10 +1,11 @@
+import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
-import { Avatar } from '../../components/Avatar';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
@@ -32,8 +33,7 @@ function formatWhen(value: string) {
 
 export default function NotificationsScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
 
   const [notifications, setNotifications] = useState<FamilyNotification[] | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -143,7 +143,7 @@ export default function NotificationsScreen() {
               <Card style={[styles.notificationCard, !notification.readAt && { borderColor: theme.primary, backgroundColor: theme.primarySoft }]}>
                 <View style={styles.notificationRow}>
                   {notification.actor ? (
-                    <Avatar name={notification.actor.displayName} imageUrl={notification.actor.avatar} size={36} />
+                    <MemberAvatar member={notification.actor} familyId={family.familyId} size={36} />
                   ) : (
                     <View style={[styles.systemMark, { backgroundColor: theme.accentSoft }]}>
                       <AppText variant="label">✦</AppText>
@@ -166,8 +166,7 @@ export default function NotificationsScreen() {
 }
 
 function FilterChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       accessibilityRole="button"

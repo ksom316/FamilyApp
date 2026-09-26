@@ -1,10 +1,11 @@
+import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { colors, radius, spacing, type Theme } from '@familyapp/config';
+import { radius, spacing } from '@familyapp/config';
 
 import { AppText } from '../../../components/AppText';
-import { Avatar } from '../../../components/Avatar';
+import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { DateTimeField } from '../../../components/DateTimeField';
@@ -22,8 +23,7 @@ function formatShoppingDate(value: string) {
 
 export default function ShoppingScreen() {
   const family = useCurrentFamily();
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   const [lists, setLists] = useState<ShoppingListSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'active' | 'completed'>('active');
@@ -110,7 +110,7 @@ export default function ShoppingScreen() {
             </Card>
           ) : (
             <View style={styles.list}>
-              {visible.map((list) => <ListCard key={list.id} list={list} />)}
+              {visible.map((list) => <ListCard key={list.id} list={list} familyId={family.familyId} />)}
             </View>
           )}
         </>
@@ -120,8 +120,7 @@ export default function ShoppingScreen() {
 }
 
 function Segment({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       accessibilityRole="tab"
@@ -134,9 +133,8 @@ function Segment({ label, active, onPress }: { label: string; active: boolean; o
   );
 }
 
-function ListCard({ list }: { list: ShoppingListSummary }) {
-  const scheme = useColorScheme();
-  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+function ListCard({ list, familyId }: { list: ShoppingListSummary; familyId: string }) {
+  const { colors: theme } = useAppTheme();
   const targetLabel = list.household ? list.household.name : 'Whole family';
   const targetColor = list.household ? theme.secondarySoft : theme.primarySoft;
   const targetTone = list.household ? 'secondary' : 'primary';
@@ -150,7 +148,7 @@ function ListCard({ list }: { list: ShoppingListSummary }) {
           <View style={[styles.targetBadge, { backgroundColor: targetColor }]}><AppText variant="caption" tone={targetTone}>{targetLabel}</AppText></View>
         </View>
         <View style={styles.personRow}>
-          <Avatar name={list.createdBy.displayName} imageUrl={list.createdBy.avatar} size={20} />
+          <MemberAvatar member={list.createdBy} familyId={familyId} size={20} />
           <AppText variant="caption" tone="mutedText">{list.createdBy.displayName}{list.shoppingDate ? ` · ${formatShoppingDate(list.shoppingDate)}` : ''}</AppText>
         </View>
         {list.totalItems > 0 ? (
