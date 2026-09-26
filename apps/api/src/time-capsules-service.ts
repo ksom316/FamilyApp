@@ -12,6 +12,7 @@ import {
 
 import { requireFamilyMembership } from './family-service';
 import { MAX_MEMORY_IMAGE_BYTES, sniffImageMimeType } from './memories-service';
+import type { ObjectStorage } from './object-storage';
 
 const MAX_TITLE_LENGTH = 120;
 const MAX_MESSAGE_LENGTH = 5000;
@@ -125,24 +126,24 @@ function preparePrivatePhotos(familyId: string, capsuleId: string, photos: Priva
   });
 }
 
-async function uploadPrivatePhotos(bucket: R2Bucket | undefined, photos: PreparedPrivatePhoto[]) {
+async function uploadPrivatePhotos(storage: ObjectStorage | undefined, photos: PreparedPrivatePhoto[]) {
   if (photos.length === 0) return;
-  if (!bucket) throw new TimeCapsuleServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
+  if (!storage) throw new TimeCapsuleServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
   const uploaded: string[] = [];
   try {
     for (const photo of photos) {
-      await bucket.put(photo.objectKey, photo.bytes, { httpMetadata: { contentType: photo.mimeType } });
+      await storage.put(photo.objectKey, photo.bytes, photo.mimeType);
       uploaded.push(photo.objectKey);
     }
   } catch {
-    await Promise.allSettled(uploaded.map((objectKey) => bucket.delete(objectKey)));
+    await Promise.allSettled(uploaded.map((objectKey) => storage.delete(objectKey)));
     throw new TimeCapsuleServiceError('storage_error', 'The private photo could not be uploaded. Please try again.', 502);
   }
 }
 
-async function removeStoredPhotos(bucket: R2Bucket | undefined, objectKeys: string[]) {
-  if (!bucket || objectKeys.length === 0) return;
-  const results = await Promise.allSettled(objectKeys.map((objectKey) => bucket.delete(objectKey)));
+async function removeStoredPhotos(storage: ObjectStorage | undefined, objectKeys: string[]) {
+  if (!storage || objectKeys.length === 0) return;
+  const results = await Promise.allSettled(objectKeys.map((objectKey) => storage.delete(objectKey)));
   if (results.some((result) => result.status === 'rejected')) {
     console.error('One or more sealed capsule objects could not be removed from storage.', { objectKeys });
   }
@@ -292,7 +293,7 @@ export async function createTimeCapsule(
   familyId: string,
   rawInput: unknown,
   privatePhotoInputs: PrivateCapsulePhotoInput[] = [],
-  bucket?: R2Bucket
+  storage?: ObjectStorage
 ) {
   const membership = await requireFamilyMembership(db, userId, familyId);
   const input = readInput(rawInput);
@@ -304,7 +305,7 @@ export async function createTimeCapsule(
   await requireFamilyMemories(db, familyId, memoryIds);
   const capsuleId = crypto.randomUUID();
   const privatePhotos = preparePrivatePhotos(familyId, capsuleId, privatePhotoInputs);
-  await uploadPrivatePhotos(bucket, privatePhotos);
+  await uploadPrivatePhotos(storage, privatePhotos);
 
   const capsuleInsert = db.insert(familyTimeCapsules).values({
     id: capsuleId, familyId, createdByMemberId: membership.id, title, message, unlockAt
@@ -328,7 +329,7 @@ export async function createTimeCapsule(
     else if (attachmentsInsert) await db.batch([capsuleInsert, attachmentsInsert] as const);
     else await capsuleInsert;
   } catch (error) {
-    await removeStoredPhotos(bucket, privatePhotos.map((photo) => photo.objectKey));
+    await removeStoredPhotos(storage, privatePhotos.map((photo) => photo.objectKey));
     throw error;
   }
   return getTimeCapsule(db, userId, familyId, capsuleId);
@@ -341,7 +342,7 @@ export async function updateTimeCapsule(
   capsuleId: string,
   rawInput: unknown,
   privatePhotoInputs: PrivateCapsulePhotoInput[] | undefined,
-  bucket?: R2Bucket
+  storage?: ObjectStorage
 ) {
   const membership = await requireFamilyMembership(db, userId, familyId);
   const input = readInput(rawInput);
@@ -366,10 +367,10 @@ export async function updateTimeCapsule(
   const oldPrivatePhotos = replacementPhotos === undefined ? [] : await db
     .select({ objectKey: familyTimeCapsuleAttachments.objectKey }).from(familyTimeCapsuleAttachments)
     .where(and(eq(familyTimeCapsuleAttachments.capsuleId, capsuleId), eq(familyTimeCapsuleAttachments.familyId, familyId)));
-  if (replacementPhotos !== undefined && oldPrivatePhotos.length > 0 && !bucket) {
+  if (replacementPhotos !== undefined && oldPrivatePhotos.length > 0 && !storage) {
     throw new TimeCapsuleServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
   }
-  if (replacementPhotos) await uploadPrivatePhotos(bucket, replacementPhotos);
+  if (replacementPhotos) await uploadPrivatePhotos(storage, replacementPhotos);
 
   let replacementCommitted = false;
   try {
@@ -414,13 +415,13 @@ export async function updateTimeCapsule(
     }
   } catch (error) {
     if (replacementPhotos && !replacementCommitted) {
-      await removeStoredPhotos(bucket, replacementPhotos.map((photo) => photo.objectKey));
+      await removeStoredPhotos(storage, replacementPhotos.map((photo) => photo.objectKey));
     }
     throw error;
   }
 
   if (replacementPhotos !== undefined) {
-    await removeStoredPhotos(bucket, oldPrivatePhotos.map((photo) => photo.objectKey));
+    await removeStoredPhotos(storage, oldPrivatePhotos.map((photo) => photo.objectKey));
   }
   return getTimeCapsule(db, userId, familyId, capsuleId);
 }
@@ -430,7 +431,7 @@ export async function deleteTimeCapsule(
   userId: string,
   familyId: string,
   capsuleId: string,
-  bucket?: R2Bucket
+  storage?: ObjectStorage
 ) {
   const membership = await requireFamilyMembership(db, userId, familyId);
   assertUuid(capsuleId);
@@ -450,7 +451,7 @@ export async function deleteTimeCapsule(
   const privatePhotos = await db.select({ objectKey: familyTimeCapsuleAttachments.objectKey })
     .from(familyTimeCapsuleAttachments)
     .where(and(eq(familyTimeCapsuleAttachments.capsuleId, capsuleId), eq(familyTimeCapsuleAttachments.familyId, familyId)));
-  if (privatePhotos.length && !bucket) {
+  if (privatePhotos.length && !storage) {
     throw new TimeCapsuleServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
   }
   const deleted = await db.delete(familyTimeCapsules).where(and(
@@ -459,5 +460,5 @@ export async function deleteTimeCapsule(
     sql`${familyTimeCapsules.unlockAt} > now()`
   )).returning({ id: familyTimeCapsules.id });
   if (!deleted[0]) throw new TimeCapsuleServiceError('capsule_already_unlocked', 'This capsule has already unlocked.', 409);
-  await removeStoredPhotos(bucket, privatePhotos.map((photo) => photo.objectKey));
+  await removeStoredPhotos(storage, privatePhotos.map((photo) => photo.objectKey));
 }

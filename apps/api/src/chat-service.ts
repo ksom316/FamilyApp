@@ -4,6 +4,7 @@ import type { Database } from '@familyapp/db';
 import { familyMembers, familyMessages, users } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import { createNotifications, familyMemberIds, recipientsExcluding } from './notifications-service';
 
 export const MAX_MESSAGE_LENGTH = 2000;
 export const MESSAGE_PAGE_SIZE = 50;
@@ -106,6 +107,18 @@ export async function createFamilyMessage(
     .limit(1);
 
   if (!message) throw new Error('Created message could not be loaded.');
+  const recipientIds = await familyMemberIds(db, familyId);
+  await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+    familyId,
+    recipientMemberId,
+    actorMemberId: membership.id,
+    type: 'family_message',
+    title: `${message.sender.displayName} sent a family message`,
+    message: 'Open FamilyApp to read the family chat.',
+    entityType: 'family_message',
+    entityId: message.id,
+    route: '/(family)/chat/family'
+  })));
   return message;
 }
 

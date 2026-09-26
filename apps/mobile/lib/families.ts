@@ -69,3 +69,17 @@ export async function createFamilyInvitation(familyId: string, role: FamilyInvit
   });
   return (await readResponse<{ invitation: FamilyInvitation }>(response)).invitation;
 }
+
+export async function leaveFamily(familyId: string) {
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/leave`, { method: 'POST' });
+  return (await readResponse<{ familyDeleted: boolean }>(response));
+}
+
+export async function transferFamilyOwnership(familyId: string, newOwnerMemberId: string) {
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/ownership/transfer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newOwnerMemberId })
+  });
+  if (!response.ok) await readResponse(response);
+}

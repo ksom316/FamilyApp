@@ -3,12 +3,5 @@ main = "src/index.ts"
 compatibility_date = "2025-05-03"
 compatibility_flags = ["nodejs_compat"]
 
-# Object storage for Family Memories photos. Create the bucket once with
-# `wrangler r2 bucket create familyapp-memories` (and a preview bucket with
-# `wrangler r2 bucket create familyapp-memories-preview`) before deploying.
-# `wrangler dev` provisions a local simulated bucket automatically, no
-# Cloudflare account access required for local development.
-[[r2_buckets]]
-binding = "MEMORIES_BUCKET"
-bucket_name = "familyapp-memories"
-preview_bucket_name = "familyapp-memories-preview"
+[triggers]
+crons = ["*/15 * * * *"]

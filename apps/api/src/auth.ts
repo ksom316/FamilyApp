@@ -10,7 +10,8 @@ export type AuthBindings = {
   BETTER_AUTH_SECRET: string;
   APP_URL: string;
   AUTH_TRUSTED_ORIGINS?: string;
-  MEMORIES_BUCKET?: R2Bucket;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
   OPENROUTER_API_KEY?: string;
   OPENROUTER_MODEL?: string;
 };

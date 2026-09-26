@@ -1,9 +1,29 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
-import { families, familyInvitations, familyMembers, users } from '@familyapp/db/schema';
+import {
+  families,
+  familyFindMeRequests,
+  familyInvitations,
+  familyLocationShares,
+  familyMembers,
+  householdMembers,
+  users
+} from '@familyapp/db/schema';
 
-export type FamilyErrorCode = 'invalid_name' | 'invalid_family_id' | 'invalid_invitation' | 'expired_invitation' | 'revoked_invitation' | 'used_invitation' | 'not_a_member' | 'forbidden_role' | 'invalid_invitation_role';
+export type FamilyErrorCode =
+  | 'invalid_name'
+  | 'invalid_family_id'
+  | 'invalid_invitation'
+  | 'expired_invitation'
+  | 'revoked_invitation'
+  | 'used_invitation'
+  | 'not_a_member'
+  | 'forbidden_role'
+  | 'invalid_invitation_role'
+  | 'invalid_member'
+  | 'member_not_found'
+  | 'owner_must_transfer';
 
 export class FamilyServiceError extends Error {
   constructor(public readonly code: FamilyErrorCode, message: string, public readonly status = 400) {
@@ -23,7 +43,7 @@ export async function listFamilyMemberships(db: Database, userId: string) {
     })
     .from(familyMembers)
     .innerJoin(families, eq(familyMembers.familyId, families.id))
-    .where(eq(familyMembers.userId, userId))
+    .where(and(eq(familyMembers.userId, userId), isNull(familyMembers.leftAt)))
     .orderBy(asc(familyMembers.joinedAt));
 }
 
@@ -77,7 +97,7 @@ export async function listFamilyMembers(db: Database, userId: string, familyId: 
     })
     .from(familyMembers)
     .innerJoin(users, eq(familyMembers.userId, users.id))
-    .where(eq(familyMembers.familyId, familyId))
+    .where(and(eq(familyMembers.familyId, familyId), isNull(familyMembers.leftAt)))
     .orderBy(asc(familyMembers.joinedAt));
 }
 
@@ -94,16 +114,145 @@ export function assertFamilyId(familyId: string) {
   }
 }
 
+function assertMemberId(value: string) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    throw new FamilyServiceError('invalid_member', 'The member identifier is not valid.');
+  }
+}
+
+// Excludes members who have left (leftAt set) — a member who left loses access to every
+// family-scoped route immediately, since this is the universal gate almost every service
+// function calls first. The row itself is never deleted (see the schema comment on
+// family_members.leftAt), so this is the one place that access actually gets revoked.
 export async function requireFamilyMembership(db: Database, userId: string, familyId: string) {
   assertFamilyId(familyId);
   const [membership] = await db
     .select({ id: familyMembers.id, role: familyMembers.role })
     .from(familyMembers)
-    .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.userId, userId)))
+    .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.userId, userId), isNull(familyMembers.leftAt)))
     .limit(1);
 
   if (!membership) throw new FamilyServiceError('not_a_member', 'You are not a member of this family.', 403);
   return membership;
+}
+
+// Pure, DB-free safety checks shared by leaveFamily and account-service.ts's pre-flight —
+// isolated specifically so the "an owner can never orphan a family" invariant is one
+// reused, directly unit-testable rule rather than an inline condition duplicated (and
+// potentially drifting) between Leave Family and Delete Account.
+export function ownerBlockedFromLeaving(role: string, otherActiveMemberCount: number) {
+  return role === 'owner' && otherActiveMemberCount > 0;
+}
+
+export function shouldTeardownFamily(otherActiveMemberCount: number) {
+  return otherActiveMemberCount === 0;
+}
+
+async function countOtherActiveMembers(db: Database, familyId: string, excludeMembershipId: string) {
+  const rows = await db
+    .select({ id: familyMembers.id })
+    .from(familyMembers)
+    .where(and(
+      eq(familyMembers.familyId, familyId),
+      isNull(familyMembers.leftAt),
+      ne(familyMembers.id, excludeMembershipId)
+    ));
+  return rows;
+}
+
+// Explicit, caller-chosen succession — never automatic. The owner must name exactly who
+// takes over; nobody is silently promoted just because the owner is trying to leave.
+export async function transferFamilyOwnership(db: Database, userId: string, familyId: string, rawNewOwnerMemberId: unknown) {
+  const membership = await requireFamilyMembership(db, userId, familyId);
+  if (membership.role !== 'owner') {
+    throw new FamilyServiceError('forbidden_role', 'Only the current owner can transfer ownership.', 403);
+  }
+  if (typeof rawNewOwnerMemberId !== 'string') {
+    throw new FamilyServiceError('invalid_member', 'Choose who should become the new owner.');
+  }
+  assertMemberId(rawNewOwnerMemberId);
+  if (rawNewOwnerMemberId === membership.id) {
+    throw new FamilyServiceError('invalid_member', 'Choose someone else to become the new owner.');
+  }
+
+  const [target] = await db
+    .select({ id: familyMembers.id })
+    .from(familyMembers)
+    .where(and(
+      eq(familyMembers.id, rawNewOwnerMemberId),
+      eq(familyMembers.familyId, familyId),
+      isNull(familyMembers.leftAt)
+    ))
+    .limit(1);
+  if (!target) throw new FamilyServiceError('member_not_found', 'That person is not an active member of this family.', 404);
+
+  // Two updates, not a batch: the second must only ever run once the first has actually
+  // landed, so the family is never briefly ownerless if anything between them fails.
+  await db.update(familyMembers).set({ role: 'owner' }).where(eq(familyMembers.id, target.id));
+  await db.update(familyMembers).set({ role: 'guardian' }).where(eq(familyMembers.id, membership.id));
+}
+
+export type LeaveFamilyResult = { familyDeleted: boolean };
+
+// The one function both "Leave Family" and "Delete Account" (once per active membership)
+// funnel through, so the owner-safety rule and the notification are enforced identically
+// either way.
+export async function leaveFamily(db: Database, userId: string, familyId: string): Promise<LeaveFamilyResult> {
+  const membership = await requireFamilyMembership(db, userId, familyId);
+  const others = await countOtherActiveMembers(db, familyId, membership.id);
+
+  if (ownerBlockedFromLeaving(membership.role, others.length)) {
+    throw new FamilyServiceError(
+      'owner_must_transfer',
+      'Transfer ownership to another member before you can leave this family.',
+      409
+    );
+  }
+
+  // Last active member standing: nothing would be left to preserve this family for, and
+  // deleting the `families` row top-down cascades every table cleanly (every family-scoped
+  // table's own familyId FK is ON DELETE CASCADE) without ever touching the RESTRICT-guarded
+  // creator/sender/assignee columns directly — those rows disappear in the same cascade.
+  if (shouldTeardownFamily(others.length)) {
+    await db.delete(families).where(eq(families.id, familyId));
+    return { familyDeleted: true };
+  }
+
+  const [leaver] = await db
+    .select({ displayName: users.name })
+    .from(familyMembers)
+    .innerJoin(users, eq(familyMembers.userId, users.id))
+    .where(eq(familyMembers.id, membership.id))
+    .limit(1);
+
+  await db.update(familyMembers).set({ leftAt: new Date() }).where(eq(familyMembers.id, membership.id));
+  await db.delete(householdMembers).where(and(
+    eq(householdMembers.familyId, familyId),
+    eq(householdMembers.familyMemberId, membership.id)
+  ));
+  // Live/real-time state (unlike historical content) shouldn't linger and look "current"
+  // to other members once someone has left.
+  await db.delete(familyLocationShares).where(eq(familyLocationShares.memberId, membership.id));
+  await db.delete(familyFindMeRequests).where(or(
+    eq(familyFindMeRequests.requesterMemberId, membership.id),
+    eq(familyFindMeRequests.recipientMemberId, membership.id)
+  ));
+
+  // Dynamic import avoids a static circular import (notifications-service.ts already
+  // imports requireFamilyMembership from this file) — same pattern notification-sweep.ts's
+  // caller already uses.
+  const { createNotifications } = await import('./notifications-service');
+  await createNotifications(db, others.map((other) => ({
+    familyId,
+    recipientMemberId: other.id,
+    type: 'member_left',
+    title: `${leaver?.displayName ?? 'A family member'} left the family`,
+    entityType: 'family_member',
+    entityId: membership.id,
+    route: '/(family)/family'
+  })));
+
+  return { familyDeleted: false };
 }
 
 export async function createFamilyInvitation(
@@ -174,7 +323,12 @@ export async function acceptFamilyInvitation(db: Database, userId: string, rawTo
       insert into family_members (family_id, user_id, role)
       select family_id, ${userId}::uuid, role
       from accepted_invitation
-      on conflict (family_id, user_id) do nothing
+      -- A member who previously left this exact family (left_at set) has a surviving,
+      -- never-deleted row (see the schema comment on family_members.leftAt) — reviving it
+      -- here is what makes rejoining possible at all, rather than getting stuck behind the
+      -- (family_id, user_id) unique index forever. Already-active members re-accepting a
+      -- redundant invitation just get a harmless no-op update.
+      on conflict (family_id, user_id) do update set left_at = null, role = excluded.role
       returning family_id
     )
     select accepted_invitation.family_id as "familyId",

@@ -1,9 +1,11 @@
 import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { router } from 'expo-router';
 import { createTheme, radius, spacing, themeNames, themePersonalities, type AppearanceMode, type Theme, type ThemeName } from '@familyapp/config';
 
+import { AccountApiError, deleteMyAccount } from '../../lib/account';
 import { AppText } from '../../components/AppText';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -12,7 +14,9 @@ import { MemberAvatar } from '../../components/MemberAvatar';
 import { FadeInView, PressableScale } from '../../components/Motion';
 import { Screen } from '../../components/Screen';
 import { useCurrentFamily } from '../../lib/family-context';
+import { FamilyApiError, getFamilyMembers, leaveFamily, transferFamilyOwnership, type FamilyMember } from '../../lib/families';
 import { requestAttentionRefresh } from '../../lib/navigation-attention';
+import { signOutWithPushCleanup } from '../../lib/push-notifications';
 import {
   AVATAR_OPTIONS,
   DEFAULT_AVATAR_CONFIG,
@@ -226,7 +230,149 @@ export default function ProfileScreen() {
           ) : null}
         </>
       )}
+
+      <AccountSection family={family} theme={theme} />
     </Screen>
+  );
+}
+
+function confirm(message: string, confirmLabel: string, onConfirm: () => void) {
+  if (Platform.OS === 'web') {
+    const windowConfirm = (globalThis as typeof globalThis & { confirm?: (text: string) => boolean }).confirm;
+    if (windowConfirm?.(message)) onConfirm();
+    return;
+  }
+  Alert.alert('Are you sure?', message, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: confirmLabel, style: 'destructive', onPress: onConfirm }
+  ]);
+}
+
+// Kept deliberately separate from the avatar/appearance sections above: this is the one
+// part of Profile with irreversible, account-lifecycle actions, so it gets its own quiet,
+// clearly-labeled card at the bottom rather than blending into the rest of the screen.
+function AccountSection({ family, theme }: { family: ReturnType<typeof useCurrentFamily>; theme: Theme }) {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [ownerBlocked, setOwnerBlocked] = useState(false);
+  const [members, setMembers] = useState<FamilyMember[] | null>(null);
+  const [transferTargetId, setTransferTargetId] = useState<string | null>(null);
+
+  async function doLeave() {
+    setBusy(true);
+    setError(null);
+    try {
+      await leaveFamily(family.familyId);
+      router.replace('/');
+    } catch (caught) {
+      if (caught instanceof FamilyApiError && caught.code === 'owner_must_transfer') {
+        setOwnerBlocked(true);
+        setError(caught.message);
+        try { setMembers((await getFamilyMembers(family.familyId)).filter((member) => member.id !== family.id)); } catch { setMembers([]); }
+      } else {
+        setError(caught instanceof FamilyApiError ? caught.message : 'You could not leave this family right now.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onLeavePress() {
+    confirm(
+      `Leave ${family.familyName}? You'll lose access to its content unless someone invites you back.`,
+      'Leave family',
+      () => void doLeave()
+    );
+  }
+
+  async function doTransfer() {
+    if (!transferTargetId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await transferFamilyOwnership(family.familyId, transferTargetId);
+      setOwnerBlocked(false);
+      setMembers(null);
+      setTransferTargetId(null);
+      // Ownership has moved — leaving is now safe, so finish the action the member asked for.
+      await doLeave();
+    } catch (caught) {
+      setError(caught instanceof FamilyApiError ? caught.message : 'Ownership could not be transferred right now.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doDeleteAccount() {
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteMyAccount();
+      await signOutWithPushCleanup();
+      router.replace('/');
+    } catch (caught) {
+      setError(caught instanceof AccountApiError ? caught.message : 'Your account could not be deleted right now.');
+      setBusy(false);
+    }
+  }
+
+  function onDeletePress() {
+    confirm(
+      'Delete your FamilyApp account? This signs you out everywhere and cannot be undone. Family content you created stays with your family, no longer linked to your name.',
+      'Delete account',
+      () => confirm(
+        'This is permanent. Are you completely sure you want to delete your account?',
+        'Yes, delete it',
+        () => void doDeleteAccount()
+      )
+    );
+  }
+
+  return (
+    <Card style={[styles.accountCard, { borderColor: theme.dangerSoft }]}>
+      <AppText variant="eyebrow" tone="danger">Account</AppText>
+      <AppText variant="body" tone="mutedText" style={styles.accountIntro}>Leaving or deleting your account cannot be undone.</AppText>
+
+      {error ? <AppText variant="caption" tone="danger" style={styles.accountError}>{error}</AppText> : null}
+
+      {ownerBlocked ? (
+        <View style={styles.transferBlock}>
+          <AppText variant="label">Choose a new owner for {family.familyName} first</AppText>
+          <AppText variant="caption" tone="mutedText" style={styles.transferDetail}>
+            You're the owner and other members are still here — pick who takes over, then you can leave.
+          </AppText>
+          {members === null ? (
+            <ActivityIndicator color={theme.primary} style={styles.transferLoading} />
+          ) : members.length === 0 ? (
+            <AppText variant="caption" tone="mutedText" style={styles.transferDetail}>No other members were found.</AppText>
+          ) : (
+            <View style={styles.transferChoices}>
+              {members.map((member) => (
+                <Pressable
+                  key={member.id}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: transferTargetId === member.id }}
+                  onPress={() => setTransferTargetId(member.id)}
+                  style={[styles.transferChoice, { backgroundColor: transferTargetId === member.id ? theme.primarySoft : theme.input, borderColor: transferTargetId === member.id ? theme.primary : theme.border }]}
+                >
+                  <MemberAvatar member={member} familyId={family.familyId} size={28} />
+                  <AppText variant="label" tone={transferTargetId === member.id ? 'primary' : 'text'}>{member.displayName}</AppText>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <View style={styles.transferActions}>
+            <Button label="Cancel" variant="quiet" disabled={busy} onPress={() => { setOwnerBlocked(false); setMembers(null); setTransferTargetId(null); setError(null); }} />
+            <Button label="Transfer & leave" loading={busy} disabled={!transferTargetId} onPress={() => void doTransfer()} />
+          </View>
+        </View>
+      ) : (
+        <Button label={`Leave ${family.familyName}`} variant="quiet" loading={busy} onPress={onLeavePress} style={styles.accountButton} />
+      )}
+
+      <View style={[styles.accountDivider, { backgroundColor: theme.divider }]} />
+      <Button label="Delete account" variant="quiet" loading={busy} onPress={onDeletePress} style={styles.accountButton} />
+    </Card>
   );
 }
 
@@ -333,6 +479,17 @@ function OptionChip({ label, selected, onPress }: { label: string; selected: boo
 }
 
 const styles = StyleSheet.create({
+  accountCard: { borderWidth: 1, marginTop: spacing.xxl, padding: spacing.xl },
+  accountIntro: { marginTop: spacing.xs },
+  accountError: { marginTop: spacing.md },
+  accountButton: { alignSelf: 'flex-start', marginTop: spacing.md },
+  accountDivider: { height: 1, marginVertical: spacing.lg },
+  transferBlock: { marginTop: spacing.md },
+  transferDetail: { marginTop: spacing.xs },
+  transferLoading: { marginTop: spacing.md },
+  transferChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  transferChoice: { alignItems: 'center', borderRadius: radius.pill, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  transferActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', marginTop: spacing.lg },
   content: { paddingBottom: spacing.xxl, paddingTop: spacing.xl },
   title: { marginTop: spacing.xs },
   subtitle: { marginTop: spacing.sm, maxWidth: 560 },

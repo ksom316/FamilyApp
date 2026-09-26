@@ -12,6 +12,7 @@ import {
 
 import { MAX_MESSAGE_LENGTH, readMessageText } from './chat-service';
 import { requireFamilyMembership } from './family-service';
+import { createNotifications } from './notifications-service';
 
 export { MAX_MESSAGE_LENGTH };
 export const PRIVATE_MESSAGE_PAGE_SIZE = 50;
@@ -322,6 +323,17 @@ export async function createPrivateMessage(
     .innerJoin(users, eq(familyMembers.userId, users.id))
     .where(and(eq(familyPrivateMessages.id, id), eq(familyPrivateMessages.familyId, familyId))).limit(1);
   if (!message) throw new Error('Created private message could not be loaded.');
+  await createNotifications(db, [{
+    familyId,
+    recipientMemberId: authorized.recipient.memberId,
+    actorMemberId: authorized.membership.id,
+    type: 'private_message',
+    title: `${message.sender.displayName} sent you a private message`,
+    message: 'Open FamilyApp to read your private conversation.',
+    entityType: 'private_conversation',
+    entityId: conversationId,
+    route: `/(family)/private-chat/${conversationId}`
+  }]);
   return message;
 }
 

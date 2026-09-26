@@ -4,6 +4,7 @@ import type { Database } from '@familyapp/db';
 import { familyEvents, familyMembers, familyTasks, users } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import { createNotifications } from './notifications-service';
 
 export type PlanErrorCode = 'invalid_plan' | 'plan_not_found' | 'forbidden_plan_action' | 'invalid_assignee';
 
@@ -147,6 +148,18 @@ export async function createTask(db: Database, userId: string, familyId: string,
   const values = await readTaskInput(db, familyId, input);
   const [task] = await db.insert(familyTasks).values({ ...values, familyId, createdByMemberId: membership.id }).returning();
   if (!task) throw new Error('Task creation did not return the created record.');
+  if (task.assignedMemberId && task.assignedMemberId !== membership.id) {
+    await createNotifications(db, [{
+      familyId,
+      recipientMemberId: task.assignedMemberId,
+      actorMemberId: membership.id,
+      type: 'task_assigned',
+      title: `You were assigned a task: ${task.title}`,
+      entityType: 'plan_task',
+      entityId: task.id,
+      route: '/(family)/plans'
+    }]);
+  }
   return task;
 }
 
@@ -157,6 +170,18 @@ export async function updateTask(db: Database, userId: string, familyId: string,
   if (!existing) throw new PlanServiceError('plan_not_found', 'Task not found.', 404);
   if (!canManage(membership.role, membership.id, existing.createdByMemberId)) throw new PlanServiceError('forbidden_plan_action', 'You cannot edit this task.', 403);
   const [task] = await db.update(familyTasks).set({ ...await readTaskInput(db, familyId, input), updatedAt: new Date() }).where(and(eq(familyTasks.id, taskId), eq(familyTasks.familyId, familyId))).returning();
+  if (task?.assignedMemberId && task.assignedMemberId !== existing.assignedMemberId && task.assignedMemberId !== membership.id) {
+    await createNotifications(db, [{
+      familyId,
+      recipientMemberId: task.assignedMemberId,
+      actorMemberId: membership.id,
+      type: 'task_assigned',
+      title: `You were assigned a task: ${task.title}`,
+      entityType: 'plan_task',
+      entityId: task.id,
+      route: '/(family)/plans'
+    }]);
+  }
   return task!;
 }
 

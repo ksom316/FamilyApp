@@ -11,6 +11,7 @@ import { Button } from './Button';
 import { PressableScale } from './Motion';
 import { MemberAvatar } from './MemberAvatar';
 import { authClient } from '../lib/auth-client';
+import { signOutWithPushCleanup } from '../lib/push-notifications';
 import type { FamilyMembership } from '../lib/families';
 import {
   EMPTY_NAVIGATION_ATTENTION_COUNTS,
@@ -179,7 +180,7 @@ export function DesktopFamilySidebar({ family }: { family: FamilyMembership }) {
           />
           <View style={styles.profileCopy}><AppText variant="label" numberOfLines={1}>{session?.user.name ?? 'Your account'}</AppText><AppText variant="caption" tone="mutedText" numberOfLines={1}>{session?.user.email ?? 'Family member'}</AppText></View>
         </PressableScale>
-        <Button label="Log out" onPress={() => void authClient.signOut()} variant="quiet" />
+        <Button label="Log out" onPress={() => void signOutWithPushCleanup()} variant="quiet" />
       </View>
     </View>
   );
@@ -193,7 +194,7 @@ export function MobileFamilyHeader({ family }: { family: FamilyMembership }) {
       <BrandMark compact />
       <View style={styles.mobileHeaderRight}>
         <AppText variant="label" numberOfLines={1} style={styles.mobileFamilyName}>{family.familyName}</AppText>
-        <Button label="Log out" onPress={() => void authClient.signOut()} variant="quiet" />
+        <Button label="Log out" onPress={() => void signOutWithPushCleanup()} variant="quiet" />
       </View>
     </View>
   );

@@ -4,6 +4,7 @@ import type { Database } from '@familyapp/db';
 import { familyMembers, familyNotifications, householdMembers, users } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import { deliverNativePushes } from './expo-push';
 
 const RECENT_NOTIFICATIONS_LIMIT = 50;
 const MAX_TITLE_LENGTH = 140;
@@ -48,7 +49,7 @@ export type NotificationInput = {
 export async function createNotifications(db: Database, entries: NotificationInput[]) {
   if (entries.length === 0) return;
   try {
-    await db.insert(familyNotifications).values(entries.map((entry) => ({
+    const inserted = await db.insert(familyNotifications).values(entries.map((entry) => ({
       familyId: entry.familyId,
       recipientMemberId: entry.recipientMemberId,
       actorMemberId: entry.actorMemberId ?? null,
@@ -59,7 +60,18 @@ export async function createNotifications(db: Database, entries: NotificationInp
       entityId: entry.entityId ?? null,
       route: entry.route ?? null,
       dedupeKey: entry.dedupeKey ?? null
-    }))).onConflictDoNothing({ target: familyNotifications.dedupeKey });
+    }))).onConflictDoNothing({ target: familyNotifications.dedupeKey }).returning({
+      id: familyNotifications.id,
+      familyId: familyNotifications.familyId,
+      recipientMemberId: familyNotifications.recipientMemberId,
+      type: familyNotifications.type,
+      title: familyNotifications.title,
+      message: familyNotifications.message,
+      entityType: familyNotifications.entityType,
+      entityId: familyNotifications.entityId,
+      route: familyNotifications.route
+    });
+    await deliverNativePushes(db, inserted);
   } catch (err) {
     console.error('Failed to create notifications', err);
   }

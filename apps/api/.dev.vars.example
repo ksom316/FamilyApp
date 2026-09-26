@@ -4,6 +4,11 @@ BETTER_AUTH_SECRET=replace-with-a-long-random-secret
 APP_URL=http://localhost:8787
 AUTH_TRUSTED_ORIGINS=http://localhost:8081,http://localhost:19006,http://localhost:3000,familyapp://
 
+# Private Supabase Storage. Keep both values server-side; never expose the service-role
+# key through an EXPO_PUBLIC_* variable. The bucket name is fixed in code as familyapp-media.
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=replace-with-your-server-side-service-role-key
+
 # Family Brain AI provider (OpenRouter). Optional: if OPENROUTER_API_KEY is unset,
 # Family Brain returns a graceful "AI is not configured" response instead of erroring.
 # Get a key at https://openrouter.ai/keys — never set this in an EXPO_PUBLIC_* variable.

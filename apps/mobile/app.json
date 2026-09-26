@@ -6,9 +6,37 @@
     "orientation": "portrait",
     "scheme": "familyapp",
     "userInterfaceStyle": "automatic",
-    "plugins": ["expo-router"],
-    "ios": { "supportsTablet": true },
-    "android": { "adaptiveIcon": { "backgroundColor": "#FFF8F0" } },
-    "web": { "bundler": "metro", "output": "static" }
+    "icon": "./assets/familyapp-app-icon.png",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "familyapp-default",
+          "color": "#0B1F5B"
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.familyapp.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/familyapp-adaptive-icon.png",
+        "backgroundColor": "#0B1F5B"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ec396353-4ca7-46fc-87f2-befd638cdf71"
+      }
+    },
+    "owner": "ksom316"
   }
 }

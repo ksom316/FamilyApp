@@ -116,6 +116,30 @@ export const authVerifications = pgTable(
   (table) => [index('verifications_identifier_idx').on(table.identifier)]
 );
 
+// Native push registrations are user-private delivery metadata. A token belongs to one
+// Better Auth user at a time, while a user may have several phones/tablets. Upserting on
+// the globally unique Expo token safely transfers a shared device to the account that most
+// recently authenticated on it.
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expoPushToken: text('expo_push_token').notNull(),
+    platform: text('platform').notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex('push_devices_expo_token_unique').on(table.expoPushToken),
+    index('push_devices_user_idx').on(table.userId),
+    check('push_devices_platform_allowed', sql`${table.platform} in ('android', 'ios')`),
+    check('push_devices_token_length', sql`char_length(${table.expoPushToken}) between 20 and 512`)
+  ]
+);
+
 export const families = pgTable(
   'families',
   {
@@ -140,7 +164,17 @@ export const familyMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: familyRole('role').notNull().default('member'),
-    joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull()
+    joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+    // Soft-departure marker for Leave Family / account deletion. The row is deliberately
+    // never hard-deleted while the family (and its content) still exists: countless other
+    // tables reference family_members.id with ON DELETE RESTRICT as the creator/sender/
+    // assignee of historical content (households, calendar events, chores, memories, time
+    // capsules, polls, shopping lists/items, menus, chat messages, Plans events/tasks...).
+    // Deleting the row out from under that content would fail the whole operation outright.
+    // Marking it "left" instead preserves every one of those FKs while requireFamilyMembership
+    // (and the family roster) treat the member as gone immediately. The row is only ever
+    // truly removed by deleting the whole `families` row (cascade) once nobody active remains.
+    leftAt: timestamp('left_at', { withTimezone: true })
   },
   (table) => [
     uniqueIndex('family_members_family_user_unique').on(table.familyId, table.userId),

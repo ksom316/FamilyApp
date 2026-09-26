@@ -5,6 +5,7 @@ import { familyMembers, users, type AvatarConfig } from '@familyapp/db/schema';
 
 import { MAX_MEMORY_IMAGE_BYTES, sniffImageMimeType } from './memories-service';
 import { requireFamilyMembership } from './family-service';
+import type { ObjectStorage } from './object-storage';
 
 export type ProfileErrorCode =
   | 'invalid_identity_type'
@@ -126,10 +127,10 @@ export async function getMemberProfilePhotoMedia(db: Database, userId: string, f
   return { objectKey: row.objectKey, mimeType: row.mimeType };
 }
 
-// Reuses the exact same sniff/size validation and R2 object-storage pattern Memories
-// already established — this is the same bucket, just a different key prefix, rather than
+// Reuses the exact same sniff/size validation and object-storage pattern Memories
+// already established — this is the same private store, just a different key prefix, rather than
 // a new storage architecture.
-export async function uploadMyProfilePhoto(db: Database, userId: string, bytes: Uint8Array, bucket: R2Bucket | undefined) {
+export async function uploadMyProfilePhoto(db: Database, userId: string, bytes: Uint8Array, storage: ObjectStorage | undefined) {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0) {
     throw new ProfileServiceError('invalid_photo', 'Choose a photo to upload.');
   }
@@ -138,14 +139,14 @@ export async function uploadMyProfilePhoto(db: Database, userId: string, bytes: 
   }
   const mimeType = sniffImageMimeType(bytes);
   if (!mimeType) throw new ProfileServiceError('unsupported_photo_type', 'Photos must be JPEG, PNG, or WebP.', 415);
-  if (!bucket) throw new ProfileServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
+  if (!storage) throw new ProfileServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
 
   // One fixed key per user — re-uploading simply overwrites it, so there is never an
   // orphaned old object left behind in storage to clean up.
   const objectKey = `profile-photos/${userId}`;
 
   try {
-    await bucket.put(objectKey, bytes, { httpMetadata: { contentType: mimeType } });
+    await storage.put(objectKey, bytes, mimeType);
   } catch {
     throw new ProfileServiceError('storage_error', 'The photo could not be uploaded. Please try again.', 502);
   }
@@ -157,10 +158,10 @@ export async function uploadMyProfilePhoto(db: Database, userId: string, bytes: 
   return getMyProfileIdentity(db, userId);
 }
 
-export async function removeMyProfilePhoto(db: Database, userId: string, bucket: R2Bucket | undefined) {
+export async function removeMyProfilePhoto(db: Database, userId: string, storage: ObjectStorage | undefined) {
   const [existing] = await db.select({ photoObjectKey: users.photoObjectKey, identityType: users.identityType }).from(users).where(eq(users.id, userId)).limit(1);
-  if (existing?.photoObjectKey && bucket) {
-    await bucket.delete(existing.photoObjectKey).catch(() => {});
+  if (existing?.photoObjectKey && storage) {
+    await storage.delete(existing.photoObjectKey).catch(() => {});
   }
   await db.update(users).set({
     photoObjectKey: null,

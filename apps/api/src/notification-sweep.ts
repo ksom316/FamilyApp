@@ -9,6 +9,8 @@ import {
   familyPollVotes,
   familyPolls,
   familyShoppingLists,
+  familyTasks,
+  familyMembers,
   familyTimeCapsules
 } from '@familyapp/db/schema';
 
@@ -49,16 +51,65 @@ export async function runNotificationSweep(db: Database, familyId: string, membe
   const now = new Date();
   const entries: NotificationInput[] = [];
 
-  const [choreEntries, calendarEntries, pollEntries, shoppingEntries, capsuleEntries] = await Promise.all([
+  const [choreEntries, planTaskEntries, calendarEntries, pollEntries, shoppingEntries, capsuleEntries] = await Promise.all([
     sweepChores(db, familyId, memberId, now),
+    sweepPlanTasks(db, familyId, memberId, now),
     sweepCalendar(db, familyId, memberId, now),
     sweepPolls(db, familyId, memberId, now),
     sweepShopping(db, familyId, memberId, now),
     sweepCapsules(db, familyId, memberId, now)
   ]);
-  entries.push(...choreEntries, ...calendarEntries, ...pollEntries, ...shoppingEntries, ...capsuleEntries);
+  entries.push(...choreEntries, ...planTaskEntries, ...calendarEntries, ...pollEntries, ...shoppingEntries, ...capsuleEntries);
 
   await createNotifications(db, entries);
+}
+
+async function sweepPlanTasks(db: Database, familyId: string, memberId: string, now: Date): Promise<NotificationInput[]> {
+  const rows = await db.select({ id: familyTasks.id, title: familyTasks.title, dueAt: familyTasks.dueAt })
+    .from(familyTasks)
+    .where(and(
+      eq(familyTasks.familyId, familyId),
+      eq(familyTasks.assignedMemberId, memberId),
+      isNull(familyTasks.completedAt)
+    ));
+  const entries: NotificationInput[] = [];
+  for (const row of rows) {
+    const dueDateKey = row.dueAt.toISOString().slice(0, 10);
+    if (row.dueAt.getTime() <= now.getTime()) {
+      entries.push({
+        familyId,
+        recipientMemberId: memberId,
+        type: 'task_overdue',
+        title: `"${row.title}" is overdue`,
+        entityType: 'plan_task',
+        entityId: row.id,
+        route: '/(family)/plans',
+        dedupeKey: `plan-task:${row.id}:overdue:${dueDateKey}:${memberId}`
+      });
+    } else if (row.dueAt.getTime() - now.getTime() <= DUE_SOON_WINDOW_MS) {
+      entries.push({
+        familyId,
+        recipientMemberId: memberId,
+        type: 'task_due_soon',
+        title: `"${row.title}" is due soon`,
+        entityType: 'plan_task',
+        entityId: row.id,
+        route: '/(family)/plans',
+        dedupeKey: `plan-task:${row.id}:due-soon:${dueDateKey}:${memberId}`
+      });
+    }
+  }
+  return entries;
+}
+
+export async function runAllNotificationSweeps(db: Database) {
+  const members = await db.select({ familyId: familyMembers.familyId, memberId: familyMembers.id }).from(familyMembers);
+  const batchSize = 20;
+  for (let index = 0; index < members.length; index += batchSize) {
+    await Promise.allSettled(members.slice(index, index + batchSize).map((member) =>
+      runNotificationSweep(db, member.familyId, member.memberId)
+    ));
+  }
 }
 
 async function sweepChores(db: Database, familyId: string, memberId: string, now: Date): Promise<NotificationInput[]> {

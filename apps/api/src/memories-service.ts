@@ -4,6 +4,7 @@ import type { Database } from '@familyapp/db';
 import { familyMembers, familyMemories, familyMemoryFavorites, users } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import type { ObjectStorage } from './object-storage';
 
 export const MAX_MEMORY_IMAGE_BYTES = 8 * 1024 * 1024;
 export const MEMORIES_PAGE_SIZE = 200;
@@ -177,7 +178,7 @@ export async function createMemory(
   userId: string,
   familyId: string,
   input: CreateMemoryInput,
-  bucket: R2Bucket | undefined
+  storage: ObjectStorage | undefined
 ) {
   const membership = await requireFamilyMembership(db, userId, familyId);
   const title = readTitle(input.title);
@@ -195,13 +196,13 @@ export async function createMemory(
   }
   const mimeType = sniffImageMimeType(input.bytes);
   if (!mimeType) throw new MemoriesServiceError('unsupported_media_type', 'Photos must be JPEG, PNG, or WebP.', 415);
-  if (!bucket) throw new MemoriesServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
+  if (!storage) throw new MemoriesServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
 
   const id = crypto.randomUUID();
   const objectKey = `families/${familyId}/memories/${id}`;
 
   try {
-    await bucket.put(objectKey, input.bytes, { httpMetadata: { contentType: mimeType } });
+    await storage.put(objectKey, input.bytes, mimeType);
   } catch {
     throw new MemoriesServiceError('storage_error', 'The photo could not be uploaded. Please try again.', 502);
   }
@@ -224,7 +225,7 @@ export async function createMemory(
     if (!created) throw new Error('Memory creation did not return the created record.');
   } catch (error) {
     // Roll back the uploaded object so a failed DB write never leaves orphaned storage.
-    await bucket.delete(objectKey).catch(() => {});
+    await storage.delete(objectKey).catch(() => {});
     throw error;
   }
 
@@ -268,7 +269,7 @@ export async function deleteMemory(
   userId: string,
   familyId: string,
   memoryId: string,
-  bucket: R2Bucket | undefined
+  storage: ObjectStorage | undefined
 ) {
   assertUuid(memoryId);
   const membership = await requireFamilyMembership(db, userId, familyId);
@@ -277,13 +278,13 @@ export async function deleteMemory(
   if (!canManage(membership.role, membership.id, existing.createdByMemberId)) {
     throw new MemoriesServiceError('forbidden_memory_action', 'You cannot delete this memory.', 403);
   }
-  if (!bucket) throw new MemoriesServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
+  if (!storage) throw new MemoriesServiceError('storage_unavailable', 'Photo storage is not configured yet.', 503);
 
   // Delete the stored photo before the database row: if storage deletion fails we abort
   // and leave both intact (retryable), rather than deleting the DB record and risking an
-  // orphaned, unreferenced object in the bucket.
+  // orphaned, unreferenced object in storage.
   try {
-    await bucket.delete(existing.objectKey);
+    await storage.delete(existing.objectKey);
   } catch {
     throw new MemoriesServiceError('storage_error', 'The photo could not be removed from storage. Please try again.', 502);
   }
@@ -293,7 +294,7 @@ export async function deleteMemory(
   } catch (error) {
     // The object is already gone from storage at this point; the DB row is the only
     // remaining record. Surfacing this loudly is the documented failure strategy since
-    // perfect cross-system atomicity with R2 is not available here.
+    // perfect cross-system atomicity with object storage is not available here.
     console.error('Memory photo deleted from storage but the database record could not be removed; manual cleanup required.', {
       memoryId,
       familyId,

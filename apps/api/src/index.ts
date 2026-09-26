@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { createDatabase } from '@familyapp/db';
 
 import { createAiProvider } from './ai-provider';
-import { createAuth, getTrustedOrigins } from './auth';
+import { createAuth, getTrustedOrigins, type AuthBindings } from './auth';
 import { BrainServiceError, respondToBrainMessage } from './brain-service';
 import {
   CalendarServiceError,
@@ -35,7 +35,17 @@ import {
   setChoreCompletion,
   updateChore
 } from './chores-service';
-import { acceptFamilyInvitation, createFamily, createFamilyInvitation, FamilyServiceError, listFamilyMembers, listFamilyMemberships } from './family-service';
+import {
+  acceptFamilyInvitation,
+  createFamily,
+  createFamilyInvitation,
+  FamilyServiceError,
+  leaveFamily,
+  listFamilyMembers,
+  listFamilyMemberships,
+  transferFamilyOwnership
+} from './family-service';
+import { AccountServiceError, deleteAccount } from './account-service';
 import {
   addHouseholdMember,
   createHousehold,
@@ -118,6 +128,13 @@ import {
   updateSavedMenu
 } from './saved-menus-service';
 import { listNotifications, markAllNotificationsRead, markNotificationRead, NotificationServiceError } from './notifications-service';
+import { runAllNotificationSweeps } from './notification-sweep';
+import { createObjectStorage } from './object-storage';
+import {
+  PushDeviceServiceError,
+  registerPushDevice,
+  unregisterPushDevice
+} from './push-devices-service';
 import {
   getMemberProfilePhotoMedia,
   getMyProfileIdentity,
@@ -227,6 +244,36 @@ app.use('/me', async (c, next) => {
   })(c, next);
 });
 
+app.post('/me/push-devices', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ expoPushToken?: unknown; platform?: unknown }>();
+    await registerPushDevice(createDatabase(c.env.DATABASE_URL), session.user.id, body);
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof PushDeviceServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400);
+    }
+    throw error;
+  }
+});
+
+app.delete('/me/push-devices', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json<{ expoPushToken?: unknown }>();
+    await unregisterPushDevice(createDatabase(c.env.DATABASE_URL), session.user.id, body.expoPushToken);
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof PushDeviceServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400);
+    }
+    throw error;
+  }
+});
+
 app.use('/me/*', async (c, next) => {
   const allowedOrigins = getTrustedOrigins(c.env);
   return cors({
@@ -287,8 +334,9 @@ app.get('/me/photo', sessionMiddleware, async (c) => {
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
     const { objectKey, mimeType } = await getMyProfilePhotoMedia(createDatabase(c.env.DATABASE_URL), session.user.id);
-    if (!c.env.MEMORIES_BUCKET) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
-    const object = await c.env.MEMORIES_BUCKET.get(objectKey);
+    const storage = createObjectStorage(c.env);
+    if (!storage) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
+    const object = await storage.get(objectKey);
     if (!object) return c.json({ error: 'No profile photo is set.', code: 'photo_not_found' }, 404);
     return c.body(object.body, 200, { 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=3600' });
   } catch (error) {
@@ -305,7 +353,7 @@ app.post('/me/photo', sessionMiddleware, async (c) => {
     const file = form.get('file');
     if (!(file instanceof File)) throw new ProfileServiceError('invalid_photo', 'Choose a photo to upload.');
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const identity = await uploadMyProfilePhoto(createDatabase(c.env.DATABASE_URL), session.user.id, bytes, c.env.MEMORIES_BUCKET);
+    const identity = await uploadMyProfilePhoto(createDatabase(c.env.DATABASE_URL), session.user.id, bytes, createObjectStorage(c.env));
     return c.json({ identity }, 201);
   } catch (error) {
     if (error instanceof ProfileServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 404 | 413 | 415 | 502 | 503);
@@ -317,10 +365,25 @@ app.delete('/me/photo', sessionMiddleware, async (c) => {
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
-    const identity = await removeMyProfilePhoto(createDatabase(c.env.DATABASE_URL), session.user.id, c.env.MEMORIES_BUCKET);
+    const identity = await removeMyProfilePhoto(createDatabase(c.env.DATABASE_URL), session.user.id, createObjectStorage(c.env));
     return c.json({ identity });
   } catch (error) {
     if (error instanceof ProfileServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 404 | 413 | 415 | 502 | 503);
+    throw error;
+  }
+});
+
+// Deletes the account per account-service.ts's documented semantics (never a raw `users`
+// row delete) — see that file for exactly what is removed vs. anonymized vs. preserved.
+app.delete('/me', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await deleteAccount(createDatabase(c.env.DATABASE_URL), session.user.id, createObjectStorage(c.env));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof AccountServiceError) return c.json({ error: error.message, code: error.code }, error.status as 409);
+    if (error instanceof FamilyServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 409 | 410);
     throw error;
   }
 });
@@ -352,6 +415,40 @@ app.get('/families/:familyId/members', sessionMiddleware, async (c) => {
   }
 });
 
+app.post('/families/:familyId/leave', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const result = await leaveFamily(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json(result);
+  } catch (error) {
+    if (error instanceof FamilyServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409 | 410);
+    }
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/ownership/transfer', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    await transferFamilyOwnership(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      (body as { newOwnerMemberId?: unknown }).newOwnerMemberId
+    );
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409 | 410);
+    }
+    throw error;
+  }
+});
+
 app.get('/families/:familyId/members/:memberId/photo', sessionMiddleware, async (c) => {
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
@@ -359,8 +456,9 @@ app.get('/families/:familyId/members/:memberId/photo', sessionMiddleware, async 
     const { objectKey, mimeType } = await getMemberProfilePhotoMedia(
       createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('memberId')
     );
-    if (!c.env.MEMORIES_BUCKET) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
-    const object = await c.env.MEMORIES_BUCKET.get(objectKey);
+    const storage = createObjectStorage(c.env);
+    if (!storage) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
+    const object = await storage.get(objectKey);
     if (!object) return c.json({ error: 'No profile photo is set.', code: 'photo_not_found' }, 404);
     return c.body(object.body, 200, { 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=3600' });
   } catch (error) {
@@ -1332,8 +1430,9 @@ app.get('/families/:familyId/memories/:memoryId/media', sessionMiddleware, async
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
     const { objectKey, mimeType } = await getMemoryMedia(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('memoryId'));
-    if (!c.env.MEMORIES_BUCKET) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
-    const object = await c.env.MEMORIES_BUCKET.get(objectKey);
+    const storage = createObjectStorage(c.env);
+    if (!storage) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
+    const object = await storage.get(objectKey);
     if (!object) return c.json({ error: 'Memory photo not found.', code: 'memory_not_found' }, 404);
     return c.body(object.body, 200, {
       'Content-Type': mimeType,
@@ -1358,7 +1457,7 @@ app.post('/families/:familyId/memories', sessionMiddleware, async (c) => {
       session.user.id,
       c.req.param('familyId'),
       { title: form.get('title'), memoryDate: form.get('memoryDate'), bytes },
-      c.env.MEMORIES_BUCKET
+      createObjectStorage(c.env)
     );
     return c.json({ memory }, 201);
   } catch (error) {
@@ -1383,7 +1482,7 @@ app.delete('/families/:familyId/memories/:memoryId', sessionMiddleware, async (c
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
-    await deleteMemory(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('memoryId'), c.env.MEMORIES_BUCKET);
+    await deleteMemory(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.param('memoryId'), createObjectStorage(c.env));
     return c.body(null, 204);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof MemoriesServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 413 | 415 | 502 | 503);
@@ -1457,8 +1556,9 @@ app.get('/families/:familyId/time-capsules/:capsuleId/attachments/:attachmentId/
       c.req.param('capsuleId'),
       c.req.param('attachmentId')
     );
-    if (!c.env.MEMORIES_BUCKET) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
-    const object = await c.env.MEMORIES_BUCKET.get(objectKey);
+    const storage = createObjectStorage(c.env);
+    if (!storage) return c.json({ error: 'Photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
+    const object = await storage.get(objectKey);
     if (!object) return c.json({ error: 'Private capsule photo not found.', code: 'attachment_not_found' }, 404);
     return c.body(object.body, 200, {
       'Content-Type': mimeType,
@@ -1484,7 +1584,7 @@ app.post('/families/:familyId/time-capsules', sessionMiddleware, async (c) => {
       c.req.param('familyId'),
       request.input,
       request.privatePhotos,
-      c.env.MEMORIES_BUCKET
+      createObjectStorage(c.env)
     ), 201);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
@@ -1506,7 +1606,7 @@ app.patch('/families/:familyId/time-capsules/:capsuleId', sessionMiddleware, asy
       c.req.param('capsuleId'),
       request.input,
       request.privatePhotos,
-      c.env.MEMORIES_BUCKET
+      createObjectStorage(c.env)
     ));
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof TimeCapsuleServiceError) {
@@ -1525,7 +1625,7 @@ app.delete('/families/:familyId/time-capsules/:capsuleId', sessionMiddleware, as
       session.user.id,
       c.req.param('familyId'),
       c.req.param('capsuleId'),
-      c.env.MEMORIES_BUCKET
+      createObjectStorage(c.env)
     );
     return c.body(null, 204);
   } catch (error) {
@@ -2008,4 +2108,9 @@ app.post('/families/:familyId/invitations', sessionMiddleware, async (c) => {
   }
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  scheduled(_controller, env, ctx) {
+    ctx.waitUntil(runAllNotificationSweeps(createDatabase(env.DATABASE_URL)));
+  }
+} satisfies ExportedHandler<AuthBindings>;

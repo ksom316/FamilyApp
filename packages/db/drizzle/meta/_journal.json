@@ -169,6 +169,20 @@
       "when": 1790407969561,
       "tag": "0023_aspiring_skreet",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790450018211,
+      "tag": "0024_complex_dark_phoenix",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790451625422,
+      "tag": "0025_flowery_prima",
+      "breakpoints": true
     }
   ]
 }
