@@ -1318,6 +1318,11 @@ export const familyNotifications = pgTable(
     entityType: text('entity_type'),
     entityId: uuid('entity_id'),
     route: text('route'),
+    // Deterministic dedup key for status/time-derived notifications (e.g.
+    // "task:{choreId}:due-soon:{dueDate}:{memberId}") so a lazy, repeatedly-run sweep can
+    // never insert the same reminder twice — enforced by the unique constraint below, not
+    // just client-side. Left null for one-off, purely event-driven notifications.
+    dedupeKey: text('dedupe_key'),
     readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
   },
@@ -1332,6 +1337,9 @@ export const familyNotifications = pgTable(
       columns: [table.actorMemberId, table.familyId],
       foreignColumns: [familyMembers.id, familyMembers.familyId]
     }).onDelete('set null'),
+    // Postgres unique constraints treat every NULL as distinct, so this only ever
+    // deduplicates the notifications that opt in by setting a dedupeKey.
+    unique('family_notifications_dedupe_key_unique').on(table.dedupeKey),
     index('family_notifications_recipient_created_idx').on(table.recipientMemberId, table.createdAt),
     index('family_notifications_recipient_unread_idx').on(table.recipientMemberId, table.readAt),
     check('family_notifications_title_length', sql`char_length(${table.title}) between 1 and 140`),

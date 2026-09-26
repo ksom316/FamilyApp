@@ -34,6 +34,11 @@ export type NotificationInput = {
   entityType?: string | null;
   entityId?: string | null;
   route?: string | null;
+  // A deterministic, globally-unique key (see the schema comment on family_notifications)
+  // that lets a status/time-derived notification be regenerated safely on every sweep —
+  // the database silently drops the insert if this key already exists. Leave unset for
+  // ordinary one-off, mutation-triggered notifications.
+  dedupeKey?: string | null;
 };
 
 // A small reusable server-side helper — every feature that wants to notify family members
@@ -52,8 +57,9 @@ export async function createNotifications(db: Database, entries: NotificationInp
       message: entry.message ? entry.message.slice(0, MAX_MESSAGE_LENGTH) : null,
       entityType: entry.entityType ?? null,
       entityId: entry.entityId ?? null,
-      route: entry.route ?? null
-    })));
+      route: entry.route ?? null,
+      dedupeKey: entry.dedupeKey ?? null
+    }))).onConflictDoNothing({ target: familyNotifications.dedupeKey });
   } catch (err) {
     console.error('Failed to create notifications', err);
   }
@@ -98,6 +104,12 @@ const notificationSelection = {
 
 export async function listNotifications(db: Database, userId: string, familyId: string) {
   const membership = await requireFamilyMembership(db, userId, familyId);
+
+  // Lazily generate this member's own status/time-derived reminders (overdue tasks,
+  // today's events, etc.) before reading the list back, so they show up immediately.
+  // Safe to run on every call — see notification-sweep.ts for why.
+  const { runNotificationSweep } = await import('./notification-sweep');
+  await runNotificationSweep(db, familyId, membership.id);
 
   const [notifications, unreadRows] = await Promise.all([
     db

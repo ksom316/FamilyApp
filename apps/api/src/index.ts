@@ -23,6 +23,8 @@ import {
   resolveEmergency
 } from './emergency-service';
 import { ChatServiceError, createFamilyMessage, getGroupChatUnreadCount, listFamilyMessages, markGroupChatRead } from './chat-service';
+import { getDailyBriefing } from './daily-briefing-service';
+import { getWeeklyRecap } from './weekly-recap-service';
 import {
   ChoreServiceError,
   createChore,
@@ -1773,6 +1775,51 @@ app.post('/families/:familyId/notifications/read-all', sessionMiddleware, async 
     return c.body(null, 204);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof NotificationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+// F20 — one aggregation endpoint over EXISTING per-feature list functions, each of which
+// already re-derives eligibility itself; this route adds no privacy logic of its own.
+app.get('/families/:familyId/daily-briefing', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const result = await getDailyBriefing(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json(result);
+  } catch (error) {
+    if (
+      error instanceof FamilyServiceError ||
+      error instanceof CalendarServiceError ||
+      error instanceof ChoreServiceError ||
+      error instanceof SavedMenuServiceError ||
+      error instanceof ShoppingServiceError ||
+      error instanceof PollServiceError ||
+      error instanceof TimeCapsuleServiceError
+    ) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+// F21 — same aggregation-over-existing-authorized-lists shape as daily-briefing above,
+// just a broader (this-week + next-7-days) window.
+app.get('/families/:familyId/weekly-recap', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const result = await getWeeklyRecap(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    return c.json(result);
+  } catch (error) {
+    if (
+      error instanceof FamilyServiceError ||
+      error instanceof CalendarServiceError ||
+      error instanceof ChoreServiceError ||
+      error instanceof SavedMenuServiceError ||
+      error instanceof ShoppingServiceError ||
+      error instanceof PollServiceError ||
+      error instanceof TimeCapsuleServiceError ||
+      error instanceof MemoriesServiceError
+    ) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
     throw error;
   }
 });

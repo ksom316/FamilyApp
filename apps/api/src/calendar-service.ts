@@ -268,7 +268,10 @@ async function visibilityConditions(db: Database, familyId: string, memberId: st
   return conditions;
 }
 
-async function selectVisibleRows(db: Database, familyId: string, memberId: string, extraWhere: SQL) {
+// Exported so the notification sweep can find "events happening today" using the exact
+// same eligibility rules as the real listing — never a re-derived, potentially-diverging
+// copy of the privacy logic.
+export async function selectVisibleCalendarRows(db: Database, familyId: string, memberId: string, extraWhere: SQL) {
   const conditions = await visibilityConditions(db, familyId, memberId);
   return db.select(baseSelection).from(familyCalendarEvents)
     .innerJoin(familyMembers, and(
@@ -300,7 +303,7 @@ async function selectVisibleRows(db: Database, familyId: string, memberId: strin
 async function requireEligibleEvent(db: Database, userId: string, familyId: string, eventId: string) {
   assertUuid(eventId);
   const membership = await requireFamilyMembership(db, userId, familyId);
-  const rows = await selectVisibleRows(db, familyId, membership.id, eq(familyCalendarEvents.id, eventId));
+  const rows = await selectVisibleCalendarRows(db, familyId, membership.id, eq(familyCalendarEvents.id, eventId));
   const event = rows[0];
   if (!event) throw new CalendarServiceError('event_not_found', 'Calendar event not found.', 404);
   return { membership, event };
@@ -315,7 +318,7 @@ export async function listCalendarEvents(
 ) {
   const membership = await requireFamilyMembership(db, userId, familyId);
   const { from, to } = readRange(rawFrom, rawTo);
-  const rows = await selectVisibleRows(db, familyId, membership.id, and(
+  const rows = await selectVisibleCalendarRows(db, familyId, membership.id, and(
     lt(familyCalendarEvents.startsAt, to),
     or(
       gt(familyCalendarEvents.endsAt, from),

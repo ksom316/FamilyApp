@@ -302,6 +302,23 @@ export async function closePoll(db: Database, userId: string, familyId: string, 
   }
   if (!poll.closedAt) {
     await db.update(familyPolls).set({ closedAt: new Date(), updatedAt: new Date() }).where(and(eq(familyPolls.id, pollId), eq(familyPolls.familyId, familyId)));
+
+    const recipientIds = poll.householdId ? await householdMemberIds(db, familyId, poll.householdId) : await familyMemberIds(db, familyId);
+    // Same dedupeKey shape the notification sweep uses for an auto-expired poll (closesAt
+    // elapsing on its own) — whichever path closes the poll first "wins" and the other can
+    // never duplicate it, since the recipient+dedupeKey pair is unique.
+    await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+      familyId,
+      recipientMemberId,
+      actorMemberId: membership.id,
+      type: 'poll_closed',
+      title: `"${poll.question}" has closed`,
+      message: 'Results are ready to view.',
+      entityType: 'poll',
+      entityId: pollId,
+      route: `/(family)/polls/${pollId}`,
+      dedupeKey: `poll:${pollId}:closed:${recipientMemberId}`
+    })));
   }
   return getPoll(db, userId, familyId, pollId);
 }

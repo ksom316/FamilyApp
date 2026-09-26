@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
-import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
@@ -9,39 +9,25 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 import { getFamilyCheckIns, postCheckIn, type FamilyCheckIn } from '../../lib/check-ins';
+import { DailyBriefingApiError, getDailyBriefing, type DailyBriefing } from '../../lib/daily-briefing';
 import { getFamilyEmergencies, type EmergencyIncident } from '../../lib/emergency';
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyNotifications } from '../../lib/notifications';
 import { getFamilyMembers } from '../../lib/families';
 import { getFamilyLocationShares, type FamilyLocationShare } from '../../lib/location';
 import { getFamilyMemories, type FamilyMemory } from '../../lib/memories';
-import { getMenuForTarget, type Menu } from '../../lib/menus';
 import { getFamilyPlans, type FamilyPlans } from '../../lib/plans';
 import { getFamilyTasks, type TaskSummary } from '../../lib/tasks';
 import { getFamilyTimeCapsules, type TimeCapsuleSummary } from '../../lib/time-capsules';
 import { useAuth } from '../../lib/use-auth';
+import { getWeeklyRecap, WeeklyRecapApiError, type WeeklyRecap } from '../../lib/weekly-recap';
+
+const BRIEFING_POLL_INTERVAL_MS = 60_000;
 
 function greetingForHour(hour: number) {
   if (hour < 12) return 'Good morning';
   if (hour < 18) return 'Good afternoon';
   return 'Good evening';
-}
-
-function pad(value: number) {
-  return String(value).padStart(2, '0');
-}
-
-function todayLocalDateString() {
-  const now = new Date();
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-
-function mondayOfLocalWeekStart() {
-  const now = new Date();
-  const day = now.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  now.setDate(now.getDate() + diff);
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 export default function FamilyHomeScreen() {
@@ -60,9 +46,6 @@ export default function FamilyHomeScreen() {
   const [locationFailed, setLocationFailed] = useState(false);
   const [timeCapsules, setTimeCapsules] = useState<TimeCapsuleSummary[] | null>(null);
   const [timeCapsulesFailed, setTimeCapsulesFailed] = useState(false);
-  const [todayMenu, setTodayMenu] = useState<Menu | null>(null);
-  const [menuLoaded, setMenuLoaded] = useState(false);
-  const [menuFailed, setMenuFailed] = useState(false);
   const [myLatestCheckIn, setMyLatestCheckIn] = useState<FamilyCheckIn | null>(null);
   const [checkInsFailed, setCheckInsFailed] = useState(false);
   const [checkInSending, setCheckInSending] = useState<'safe' | 'arrived' | null>(null);
@@ -70,6 +53,10 @@ export default function FamilyHomeScreen() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [myTasks, setMyTasks] = useState<TaskSummary[] | null>(null);
   const [tasksFailed, setTasksFailed] = useState(false);
+  const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
+  const [briefingError, setBriefingError] = useState<string | null>(null);
+  const [weeklyRecap, setWeeklyRecap] = useState<WeeklyRecap | null>(null);
+  const [weeklyRecapError, setWeeklyRecapError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -78,8 +65,6 @@ export default function FamilyHomeScreen() {
     setMemoriesFailed(false);
     setLocationFailed(false);
     setTimeCapsulesFailed(false);
-    setMenuLoaded(false);
-    setMenuFailed(false);
     setCheckInsFailed(false);
     setTasksFailed(false);
     void getFamilyMembers(family.familyId).then((members) => {
@@ -107,14 +92,6 @@ export default function FamilyHomeScreen() {
     }).catch(() => {
       if (active) setTimeCapsulesFailed(true);
     });
-    // Only the whole-family menu is shown here, never a household menu — if the viewer
-    // belongs to multiple households plus the family, combining several menus into one
-    // "today" summary would be ambiguous, so this card deliberately picks one clear rule.
-    void getMenuForTarget(family.familyId, null, mondayOfLocalWeekStart()).then((result) => {
-      if (active) { setTodayMenu(result.menu); setMenuLoaded(true); }
-    }).catch(() => {
-      if (active) setMenuFailed(true);
-    });
     void getFamilyCheckIns(family.familyId).then((checkIns) => {
       if (active) setMyLatestCheckIn(checkIns.find((item) => item.member.memberId === family.id) ?? null);
     }).catch(() => {
@@ -137,6 +114,63 @@ export default function FamilyHomeScreen() {
     });
     return () => { active = false; };
   }, [family.familyId, family.id]);
+
+  // The daily briefing and weekly recap share one focus/foreground-aware refresh (same
+  // shape as the sidebar's attention counts and the Tasks screen's own polling) rather than
+  // the plain mount-only effect above, since "what matters today/this week" should be
+  // current when you come back to Home, not just when you first land on it. They're two
+  // independent requests (each with its own in-flight guard, so one being slow never blocks
+  // the other) but deliberately share a single timer/AppState subscription per F21 §10.
+  const briefingFocusedRef = useRef(false);
+  const briefingInFlightRef = useRef(false);
+  const recapInFlightRef = useRef(false);
+
+  const loadBriefing = useCallback(async () => {
+    if (!briefingFocusedRef.current || briefingInFlightRef.current) return;
+    briefingInFlightRef.current = true;
+    try {
+      const result = await getDailyBriefing(family.familyId);
+      if (briefingFocusedRef.current) {
+        setBriefing(result);
+        setBriefingError(null);
+      }
+    } catch (err) {
+      if (briefingFocusedRef.current) setBriefingError(err instanceof DailyBriefingApiError ? err.message : 'We could not load today’s briefing.');
+    } finally {
+      briefingInFlightRef.current = false;
+    }
+  }, [family.familyId]);
+
+  const loadWeeklyRecap = useCallback(async () => {
+    if (!briefingFocusedRef.current || recapInFlightRef.current) return;
+    recapInFlightRef.current = true;
+    try {
+      const result = await getWeeklyRecap(family.familyId);
+      if (briefingFocusedRef.current) {
+        setWeeklyRecap(result);
+        setWeeklyRecapError(null);
+      }
+    } catch (err) {
+      if (briefingFocusedRef.current) setWeeklyRecapError(err instanceof WeeklyRecapApiError ? err.message : 'We could not load your family’s week.');
+    } finally {
+      recapInFlightRef.current = false;
+    }
+  }, [family.familyId]);
+
+  useFocusEffect(useCallback(() => {
+    briefingFocusedRef.current = true;
+    void loadBriefing();
+    void loadWeeklyRecap();
+    const interval = setInterval(() => { void loadBriefing(); void loadWeeklyRecap(); }, BRIEFING_POLL_INTERVAL_MS);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') { void loadBriefing(); void loadWeeklyRecap(); }
+    });
+    return () => {
+      briefingFocusedRef.current = false;
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [loadBriefing, loadWeeklyRecap]));
 
   async function sendQuickCheckIn(status: 'safe' | 'arrived') {
     setCheckInSending(status);
@@ -172,12 +206,6 @@ export default function FamilyHomeScreen() {
       return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
     });
   const nextTask = myOutstandingTasks[0];
-  const today = todayLocalDateString();
-  const todayMeals = todayMenu ? {
-    breakfast: todayMenu.meals.find((meal) => meal.mealDate === today && meal.mealType === 'breakfast') ?? null,
-    lunch: todayMenu.meals.find((meal) => meal.mealDate === today && meal.mealType === 'lunch') ?? null,
-    dinner: todayMenu.meals.find((meal) => meal.mealDate === today && meal.mealType === 'dinner') ?? null
-  } : null;
   const upcomingPlans = plans ? [
     ...plans.events.map((event) => ({ id: `event-${event.id}`, title: event.title, at: event.startsAt, kind: 'Event' })),
     ...pendingTasks.map((task) => ({ id: `task-${task.id}`, title: task.title, at: task.dueAt, kind: 'Task' }))
@@ -217,6 +245,10 @@ export default function FamilyHomeScreen() {
           <Button label="View →" variant="quiet" onPress={() => router.push('/(family)/emergency' as never)} />
         </Card>
       ) : null}
+
+      <TodayBriefing briefing={briefing} error={briefingError} onRetry={() => void loadBriefing()} theme={theme} isCompact={isCompact} />
+
+      <WeeklyRecapSection recap={weeklyRecap} error={weeklyRecapError} onRetry={() => void loadWeeklyRecap()} theme={theme} isCompact={isCompact} />
 
       <View style={[styles.overview, !isCompact && styles.overviewWide]}>
         <Card style={[styles.overviewCard, { backgroundColor: theme.primarySoft }]}>
@@ -331,22 +363,6 @@ export default function FamilyHomeScreen() {
         <Button label="Open Check-ins" variant="quiet" onPress={() => router.push('/(family)/check-ins' as never)} style={styles.actionButton} />
       </Card>
 
-      <Card style={[styles.menuCard, { backgroundColor: theme.accentSoft }]}>
-        <AppText variant="eyebrow" style={{ color: theme.warning }}>Today’s menu</AppText>
-        {todayMeals ? (
-          <View style={styles.menuMeals}>
-            <View style={styles.menuMealRow}><AppText variant="label">Breakfast</AppText><AppText variant="body" tone="mutedText" numberOfLines={1}>{todayMeals.breakfast?.mealName ?? 'Not planned'}</AppText></View>
-            <View style={styles.menuMealRow}><AppText variant="label">Lunch</AppText><AppText variant="body" tone="mutedText" numberOfLines={1}>{todayMeals.lunch?.mealName ?? 'Not planned'}</AppText></View>
-            <View style={styles.menuMealRow}><AppText variant="label">Dinner</AppText><AppText variant="body" tone="mutedText" numberOfLines={1}>{todayMeals.dinner?.mealName ?? 'Not planned'}</AppText></View>
-          </View>
-        ) : (
-          <AppText variant="body" tone="mutedText" style={styles.menuEmptyText}>
-            {menuFailed ? 'Unavailable right now' : menuLoaded ? 'No menu planned for the family this week yet.' : 'Loading this week’s menu…'}
-          </AppText>
-        )}
-        <Button label="View menu" variant="quiet" onPress={() => router.push('/(family)/menu' as never)} style={styles.actionButton} />
-      </Card>
-
       <View style={[styles.lowerGrid, isWideHero && styles.lowerGridWide]}>
         <Card style={styles.lowerCard}>
           <AppText variant="heading">Upcoming</AppText>
@@ -363,6 +379,259 @@ export default function FamilyHomeScreen() {
 
 function PlanActionCard({ title, detail, mark, color, textColor, onPress }: { title: string; detail: string; mark: string; color: string; textColor: string; onPress: () => void }) {
   return <Card style={styles.actionCard}><View style={[styles.actionMark, { backgroundColor: color }]}><AppText variant="heading" style={{ color: textColor }}>{mark}</AppText></View><AppText variant="label" style={styles.actionTitle}>{title}</AppText><AppText variant="caption" tone="mutedText">{detail}</AppText><Button label="Open plans" variant="quiet" onPress={onPress} style={styles.actionButton} /></Card>;
+}
+
+function formatEventTime(event: DailyBriefing['events'][number]) {
+  if (event.allDay) return 'All day';
+  return new Date(event.startsAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatTaskStatus(task: DailyBriefing['tasks'][number]) {
+  if (task.status === 'overdue') return 'Overdue';
+  if (task.status === 'due_today') return 'Due today';
+  return task.dueAt ? `Due ${new Date(task.dueAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'No due date';
+}
+
+function formatPollCloses(poll: DailyBriefing['polls'][number]) {
+  if (!poll.closesAt) return 'Open';
+  return `Closes ${new Date(poll.closesAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+// The Home screen's "what matters today" strip — one card per section, each reusing
+// exactly what the server's daily-briefing endpoint already decided this member can see.
+// Sections with nothing relevant are simply left out, per F20 scope (no invented content,
+// no empty boxes for every feature).
+function TodayBriefing({ briefing, error, onRetry, theme, isCompact }: {
+  briefing: DailyBriefing | null;
+  error: string | null;
+  onRetry: () => void;
+  theme: Theme;
+  isCompact: boolean;
+}) {
+  if (error) {
+    return (
+      <Card style={[styles.briefingMessageCard, { backgroundColor: theme.dangerSoft }]}>
+        <AppText variant="body" tone="danger">{error}</AppText>
+        <Button label="Try again" variant="quiet" onPress={onRetry} />
+      </Card>
+    );
+  }
+
+  if (!briefing) {
+    return (
+      <View style={styles.briefingLoading}>
+        <ActivityIndicator color={theme.primary} />
+        <AppText variant="caption" tone="mutedText" style={styles.briefingLoadingText}>Loading today’s briefing…</AppText>
+      </View>
+    );
+  }
+
+  const hasAnything = briefing.events.length > 0 || briefing.tasks.length > 0 || briefing.menus.length > 0
+    || briefing.shopping.length > 0 || briefing.polls.length > 0 || briefing.capsules.length > 0;
+
+  return (
+    <View style={styles.briefingSection}>
+      <View style={styles.sectionHeader}>
+        <View><AppText variant="heading">Today</AppText><AppText variant="caption" tone="mutedText" style={styles.sectionSubtitle}>Here’s what’s happening today.</AppText></View>
+      </View>
+
+      {!hasAnything ? (
+        <Card style={styles.briefingEmptyCard}>
+          <AppText variant="label">Nothing urgent today</AppText>
+          <AppText variant="caption" tone="mutedText" align="center">Enjoy a quiet one — check back tomorrow.</AppText>
+        </Card>
+      ) : (
+        <View style={[styles.briefingGrid, !isCompact && styles.briefingGridWide]}>
+          {briefing.events.length > 0 ? (
+            <Card style={styles.briefingCard}>
+              <View style={styles.briefingCardHeader}><AppText variant="label">Calendar</AppText><Button label="View all" variant="quiet" onPress={() => router.push(briefing.events[0].route as never)} /></View>
+              <View style={styles.briefingList}>
+                {briefing.events.map((event) => (
+                  <Pressable key={event.id} accessibilityRole="button" onPress={() => router.push(event.route as never)} style={styles.briefingRow}>
+                    <AppText variant="body" numberOfLines={1} style={styles.briefingRowTitle}>{event.title}</AppText>
+                    <AppText variant="caption" tone="mutedText">{formatEventTime(event)}</AppText>
+                  </Pressable>
+                ))}
+              </View>
+            </Card>
+          ) : null}
+
+          {briefing.tasks.length > 0 ? (
+            <Card style={styles.briefingCard}>
+              <View style={styles.briefingCardHeader}><AppText variant="label">My Tasks</AppText><Button label="View all" variant="quiet" onPress={() => router.push('/(family)/tasks' as never)} /></View>
+              <View style={styles.briefingList}>
+                {briefing.tasks.map((task) => (
+                  <Pressable key={task.id} accessibilityRole="button" onPress={() => router.push(task.route as never)} style={styles.briefingRow}>
+                    <AppText variant="body" numberOfLines={1} style={styles.briefingRowTitle}>{task.title}</AppText>
+                    <AppText variant="caption" tone={task.status === 'overdue' ? 'danger' : 'mutedText'}>{formatTaskStatus(task)}</AppText>
+                  </Pressable>
+                ))}
+              </View>
+            </Card>
+          ) : null}
+
+          {briefing.menus.length > 0 ? (
+            <Card style={styles.briefingCard}>
+              <View style={styles.briefingCardHeader}><AppText variant="label">Today’s Menu</AppText><Button label="View all" variant="quiet" onPress={() => router.push('/(family)/menu' as never)} /></View>
+              <View style={styles.briefingList}>
+                {briefing.menus.map((menu) => (
+                  <Pressable key={menu.id} accessibilityRole="button" onPress={() => router.push(menu.route as never)} style={styles.briefingMenuBlock}>
+                    <AppText variant="body" numberOfLines={1}>{menu.name}</AppText>
+                    {menu.meals.map((meal) => (
+                      <View key={meal.mealType} style={styles.briefingRow}>
+                        <AppText variant="caption" tone="mutedText" style={styles.briefingMealType}>{meal.mealType[0].toUpperCase()}{meal.mealType.slice(1)}</AppText>
+                        <AppText variant="caption" numberOfLines={1}>{meal.mealName}</AppText>
+                      </View>
+                    ))}
+                  </Pressable>
+                ))}
+              </View>
+            </Card>
+          ) : null}
+
+          {briefing.shopping.length > 0 ? (
+            <Card style={styles.briefingCard}>
+              <View style={styles.briefingCardHeader}><AppText variant="label">Shopping today</AppText><Button label="View all" variant="quiet" onPress={() => router.push('/(family)/shopping' as never)} /></View>
+              <View style={styles.briefingList}>
+                {briefing.shopping.map((list) => (
+                  <Pressable key={list.id} accessibilityRole="button" onPress={() => router.push(list.route as never)} style={styles.briefingRow}>
+                    <AppText variant="body" numberOfLines={1} style={styles.briefingRowTitle}>{list.name}</AppText>
+                    <AppText variant="caption" tone="mutedText">{list.remainingItems} of {list.totalItems} left</AppText>
+                  </Pressable>
+                ))}
+              </View>
+            </Card>
+          ) : null}
+
+          {briefing.polls.length > 0 ? (
+            <Card style={styles.briefingCard}>
+              <View style={styles.briefingCardHeader}><AppText variant="label">Needs your vote</AppText><Button label="View all" variant="quiet" onPress={() => router.push('/(family)/polls' as never)} /></View>
+              <View style={styles.briefingList}>
+                {briefing.polls.map((poll) => (
+                  <Pressable key={poll.id} accessibilityRole="button" onPress={() => router.push(poll.route as never)} style={styles.briefingRow}>
+                    <AppText variant="body" numberOfLines={1} style={styles.briefingRowTitle}>{poll.question}</AppText>
+                    <AppText variant="caption" tone="mutedText">{formatPollCloses(poll)}</AppText>
+                  </Pressable>
+                ))}
+              </View>
+            </Card>
+          ) : null}
+
+          {briefing.capsules.length > 0 ? (
+            <Card style={styles.briefingCard}>
+              <View style={styles.briefingCardHeader}><AppText variant="label">Time Capsules</AppText><Button label="View all" variant="quiet" onPress={() => router.push('/(family)/capsules' as never)} /></View>
+              <View style={styles.briefingList}>
+                {briefing.capsules.map((capsule) => (
+                  <Pressable key={capsule.id} accessibilityRole="button" onPress={() => router.push(capsule.route as never)} style={styles.briefingRow}>
+                    <AppText variant="body" numberOfLines={1} style={styles.briefingRowTitle}>{capsule.title}</AppText>
+                    <AppText variant="caption" tone="mutedText">Ready to open</AppText>
+                  </Pressable>
+                ))}
+              </View>
+            </Card>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function formatUpcomingWhen(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+// "Your family's week": a compact this-week summary (counts only — no invented activity)
+// plus a short forward-looking "Coming up" list across the next 7 days. Deliberately
+// smaller and less structured than TodayBriefing above — this is broader context, not a
+// second snapshot of today, and it never duplicates F20's sections item-for-item.
+function WeeklyRecapSection({ recap, error, onRetry, theme, isCompact }: {
+  recap: WeeklyRecap | null;
+  error: string | null;
+  onRetry: () => void;
+  theme: Theme;
+  isCompact: boolean;
+}) {
+  if (error) {
+    return (
+      <Card style={[styles.briefingMessageCard, { backgroundColor: theme.dangerSoft }]}>
+        <AppText variant="body" tone="danger">{error}</AppText>
+        <Button label="Try again" variant="quiet" onPress={onRetry} />
+      </Card>
+    );
+  }
+
+  if (!recap) {
+    return (
+      <View style={styles.briefingLoading}>
+        <ActivityIndicator color={theme.primary} />
+        <AppText variant="caption" tone="mutedText" style={styles.briefingLoadingText}>Loading your family’s week…</AppText>
+      </View>
+    );
+  }
+
+  const { highlights, upcoming } = recap;
+  const hasHighlights = highlights.tasksCompleted > 0 || highlights.events > 0 || highlights.pollsClosed > 0 || highlights.memoriesAdded > 0;
+  const upcomingItems: { id: string; title: string; when: string; route: string }[] = [
+    ...upcoming.events.map((event) => ({ id: `event-${event.id}`, title: event.title, when: event.allDay ? 'All day' : formatUpcomingWhen(event.startsAt), route: event.route })),
+    ...upcoming.tasks.map((task) => ({ id: `task-${task.id}`, title: task.title, when: task.dueAt ? formatUpcomingWhen(task.dueAt) : 'No due date', route: task.route })),
+    ...upcoming.shopping.map((list) => ({ id: `shopping-${list.id}`, title: list.name, when: list.shoppingDate ? formatUpcomingWhen(list.shoppingDate) : '', route: list.route })),
+    ...upcoming.polls.map((poll) => ({ id: `poll-${poll.id}`, title: poll.question, when: poll.closesAt ? `Closes ${formatUpcomingWhen(poll.closesAt)}` : '', route: poll.route })),
+    ...upcoming.capsules.map((capsule) => ({ id: `capsule-${capsule.id}`, title: capsule.title, when: formatUpcomingWhen(capsule.unlockAt), route: capsule.route })),
+    ...upcoming.menus.map((menu) => ({ id: `menu-${menu.id}`, title: `${menu.name} — active`, when: '', route: menu.route }))
+  ];
+  const hasUpcoming = upcomingItems.length > 0;
+
+  if (!hasHighlights && !hasUpcoming) {
+    return (
+      <View style={styles.briefingSection}>
+        <View style={styles.sectionHeader}>
+          <View><AppText variant="heading">Your family’s week</AppText></View>
+        </View>
+        <Card style={styles.briefingEmptyCard}>
+          <AppText variant="caption" tone="mutedText" align="center">A quiet week so far. Your upcoming family plans will appear here.</AppText>
+        </Card>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.briefingSection}>
+      <View style={styles.sectionHeader}>
+        <View><AppText variant="heading">Your family’s week</AppText></View>
+      </View>
+
+      {hasHighlights ? (
+        <View style={[styles.recapHighlights, !isCompact && styles.recapHighlightsWide]}>
+          {highlights.tasksCompleted > 0 ? <RecapStat label={`${highlights.tasksCompleted} task${highlights.tasksCompleted === 1 ? '' : 's'} completed`} theme={theme} /> : null}
+          {highlights.events > 0 ? <RecapStat label={`${highlights.events} event${highlights.events === 1 ? '' : 's'}`} theme={theme} /> : null}
+          {highlights.pollsClosed > 0 ? <RecapStat label={`${highlights.pollsClosed} poll${highlights.pollsClosed === 1 ? '' : 's'} decided`} theme={theme} /> : null}
+          {highlights.memoriesAdded > 0 ? <RecapStat label={`${highlights.memoriesAdded} memor${highlights.memoriesAdded === 1 ? 'y' : 'ies'} added`} theme={theme} /> : null}
+        </View>
+      ) : null}
+
+      {hasUpcoming ? (
+        <Card style={styles.recapUpcomingCard}>
+          <AppText variant="label">Coming up</AppText>
+          <View style={styles.briefingList}>
+            {upcomingItems.map((item) => (
+              <Pressable key={item.id} accessibilityRole="button" onPress={() => router.push(item.route as never)} style={styles.briefingRow}>
+                <AppText variant="body" numberOfLines={1} style={styles.briefingRowTitle}>{item.title}</AppText>
+                {item.when ? <AppText variant="caption" tone="mutedText">{item.when}</AppText> : null}
+              </Pressable>
+            ))}
+          </View>
+        </Card>
+      ) : null}
+    </View>
+  );
+}
+
+function RecapStat({ label, theme }: { label: string; theme: Theme }) {
+  return (
+    <View style={[styles.recapStat, { backgroundColor: theme.primarySoft }]}>
+      <AppText variant="label" tone="primary">{label}</AppText>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -406,9 +675,24 @@ const styles = StyleSheet.create({
   checkInSubtitle: { marginTop: spacing.sm },
   checkInActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.lg },
   checkInButton: { flexGrow: 1 },
-  menuMeals: { gap: spacing.sm, marginTop: spacing.md },
-  menuMealRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
-  menuEmptyText: { marginTop: spacing.md },
+  briefingSection: { marginTop: spacing.xl },
+  briefingMessageCard: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.lg, padding: spacing.lg },
+  briefingLoading: { alignItems: 'center', marginTop: spacing.xl, paddingVertical: spacing.lg },
+  briefingLoadingText: { marginTop: spacing.sm },
+  briefingEmptyCard: { alignItems: 'center', gap: spacing.xs, marginTop: spacing.md, padding: spacing.xl },
+  briefingGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.md },
+  briefingGridWide: { flexWrap: 'wrap' },
+  briefingCard: { flexBasis: '31%', flexGrow: 1, minWidth: 220, padding: spacing.md },
+  briefingCardHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  briefingList: { gap: spacing.sm, marginTop: spacing.sm },
+  briefingRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
+  briefingRowTitle: { flex: 1, minWidth: 0 },
+  briefingMenuBlock: { gap: spacing.xs },
+  briefingMealType: { width: 64 },
+  recapHighlights: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  recapHighlightsWide: { flexWrap: 'wrap' },
+  recapStat: { borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  recapUpcomingCard: { marginTop: spacing.md, padding: spacing.md },
   lowerGrid: { gap: spacing.md, marginTop: spacing.lg },
   lowerGridWide: { flexDirection: 'row' },
   lowerCard: { flex: 1, minHeight: 230 },

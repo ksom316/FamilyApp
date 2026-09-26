@@ -5,6 +5,7 @@ import { familyMembers, familySavedMenuMeals, familySavedMenuMembers, familySave
 
 import { requireFamilyMembership } from './family-service';
 import { createMenu, getMenu, readWeekStartDate, setMeal, type MealType } from './menus-service';
+import { createNotifications, familyMemberIds, householdMemberIds, recipientsExcluding } from './notifications-service';
 import { createShoppingList } from './shopping-service';
 
 export type SavedMenuErrorCode =
@@ -465,7 +466,27 @@ export async function setSavedMenuActive(db: Database, userId: string, familyId:
   }
 
   await db.update(familySavedMenus).set({ isActive: rawActive, updatedAt: new Date() }).where(and(eq(familySavedMenus.id, savedMenuId), eq(familySavedMenus.familyId, familyId)));
-  return getSavedMenu(db, userId, familyId, savedMenuId);
+  const updated = await getSavedMenu(db, userId, familyId, savedMenuId);
+
+  if (rawActive && !savedMenu.isActive) {
+    const recipientIds = updated.audience.type === 'household'
+      ? await householdMemberIds(db, familyId, updated.audience.household.id)
+      : updated.audience.type === 'members'
+        ? updated.audience.members.map((member) => member.memberId)
+        : await familyMemberIds(db, familyId);
+    await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+      familyId,
+      recipientMemberId,
+      actorMemberId: membership.id,
+      type: 'saved_menu_activated',
+      title: `"${updated.name}" is now your active menu`,
+      entityType: 'saved_menu',
+      entityId: savedMenuId,
+      route: '/(family)/menu'
+    })));
+  }
+
+  return updated;
 }
 
 // Collaboration on meal content follows the same rule as weekly menus: any eligible

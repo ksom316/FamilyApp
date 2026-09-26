@@ -4,6 +4,7 @@ import type { Database } from '@familyapp/db';
 import { familyMembers, familyMenuMeals, familyMenus, householdMembers, households, users } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import { createNotifications, familyMemberIds, householdMemberIds, recipientsExcluding } from './notifications-service';
 import { createShoppingList } from './shopping-service';
 
 export type MenuErrorCode =
@@ -304,7 +305,20 @@ export async function createMenu(db: Database, userId: string, familyId: string,
     .returning({ id: familyMenus.id });
   if (!created) throw new Error('Menu creation did not return the created record.');
 
-  return getMenu(db, userId, familyId, created.id);
+  const menu = await getMenu(db, userId, familyId, created.id);
+  const recipientIds = householdId ? await householdMemberIds(db, familyId, householdId) : await familyMemberIds(db, familyId);
+  await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
+    familyId,
+    recipientMemberId,
+    actorMemberId: membership.id,
+    type: 'menu_created',
+    title: `${menu.createdBy.displayName} created a weekly menu: ${menu.title}`,
+    entityType: 'menu',
+    entityId: created.id,
+    route: '/(family)/menu'
+  })));
+
+  return menu;
 }
 
 export async function updateMenu(db: Database, userId: string, familyId: string, menuId: string, input: { title?: unknown }) {

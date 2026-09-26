@@ -1,0 +1,2 @@
+ALTER TABLE "family_notifications" ADD COLUMN "dedupe_key" text;--> statement-breakpoint
+ALTER TABLE "family_notifications" ADD CONSTRAINT "family_notifications_dedupe_key_unique" UNIQUE("dedupe_key");

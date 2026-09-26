@@ -540,5 +540,25 @@ export async function setChoreCompletion(db: Database, userId: string, familyId:
   // simply never assigned to it — neither case should be distinguishable to the caller.
   if (!updated[0]) throw new ChoreServiceError('not_assigned', 'That task could not be found.', 404);
 
-  return getChore(db, userId, familyId, choreId);
+  const chore = await getChore(db, userId, familyId, choreId);
+
+  // Only the creator is notified, and only once the whole task is done (every assignee),
+  // not on each individual assignee's own completion — a per-assignee ping would be noisy
+  // on a multi-person task and tells the creator nothing new until it's actually finished.
+  if (completed && chore.createdBy.memberId !== membership.id && chore.totalAssignees > 0 && chore.completedAssignees === chore.totalAssignees) {
+    const completedAt = chore.assignees.find((assignee) => assignee.memberId === membership.id)?.completedAt;
+    await createNotifications(db, [{
+      familyId,
+      recipientMemberId: chore.createdBy.memberId,
+      actorMemberId: membership.id,
+      type: 'task_completed',
+      title: `"${chore.title}" is complete`,
+      entityType: 'chore',
+      entityId: choreId,
+      route: `/(family)/tasks/${choreId}`,
+      dedupeKey: `task:${choreId}:completed:${(completedAt ?? new Date()).toISOString()}:${chore.createdBy.memberId}`
+    }]);
+  }
+
+  return chore;
 }
