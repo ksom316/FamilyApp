@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { colors, radius, spacing, type Theme } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
@@ -16,12 +16,16 @@ import {
   getCalendarEvents,
   type CalendarEvent
 } from '../../lib/calendar';
+import { CalendarTimelineApiError, getCalendarTimeline, type CalendarTimelineItem, type CalendarTimelineSource } from '../../lib/calendar-timeline';
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyMembers, type FamilyMember } from '../../lib/families';
 import { getFamilyHousehold, getFamilyHouseholds, type Household } from '../../lib/households';
 
 const POLL_INTERVAL_MS = 30_000;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const SOURCE_ICON: Record<CalendarTimelineSource, string> = { calendar: '📅', task: '✓', shopping: '🛒', poll: '🗳', capsule: '🔓' };
+const SOURCE_LABEL: Record<CalendarTimelineSource, string> = { calendar: 'Event', task: 'Task', shopping: 'Shopping', poll: 'Poll', capsule: 'Capsule' };
 
 function pad(value: number) { return String(value).padStart(2, '0'); }
 function localDateKey(date: Date) { return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`; }
@@ -52,6 +56,19 @@ function eventDayKeys(event: CalendarEvent) {
     keys.push(localDateKey(date));
   }
   return keys;
+}
+
+function externalItemDayKey(item: CalendarTimelineItem) {
+  // Matches the multi-day/all-day handling above: an all-day item's startsAt is a UTC-date
+  // stamp (shoppingDate), so it's bucketed by UTC date the same way all-day calendar events
+  // are; a timed item (task due time, poll closing time, capsule unlock time) is bucketed by
+  // local date, the same way timed calendar events are.
+  return item.allDay ? utcDateKey(new Date(item.startsAt)) : localDateKey(new Date(item.startsAt));
+}
+
+function formatExternalItemWhen(item: CalendarTimelineItem) {
+  if (item.allDay) return new Date(item.startsAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return new Date(item.startsAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function formatEventWhen(event: CalendarEvent) {
@@ -85,13 +102,24 @@ export default function CalendarScreen() {
   const [openEvent, setOpenEvent] = useState<CalendarEvent | null>(null);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [externalItems, setExternalItems] = useState<CalendarTimelineItem[] | null>(null);
+  const [externalError, setExternalError] = useState<string | null>(null);
   const focusedRef = useRef(false);
   const refreshInFlightRef = useRef(false);
+  const externalInFlightRef = useRef(false);
 
   const days = useMemo(() => gridDates(month), [month]);
   const range = useMemo(() => ({
     from: addDays(days[0] as Date, -1).toISOString(),
     to: addDays(days[days.length - 1] as Date, 91).toISOString()
+  }), [days]);
+  // The unified timeline (tasks/shopping/polls/capsules) is scoped to just the visible
+  // month grid, not the extended lookahead used for manual events' own "Upcoming" list
+  // below — that keeps every request comfortably under the endpoint's 120-day cap and
+  // keeps each day cell's extra items compact, per F22's density guidance.
+  const timelineRange = useMemo(() => ({
+    from: (days[0] as Date).toISOString(),
+    to: addDays(days[days.length - 1] as Date, 1).toISOString()
   }), [days]);
 
   const load = useCallback(async (showLoading = false) => {
@@ -108,6 +136,22 @@ export default function CalendarScreen() {
     }
   }, [family.familyId, range.from, range.to]);
 
+  const loadExternal = useCallback(async () => {
+    if (!focusedRef.current || externalInFlightRef.current) return;
+    externalInFlightRef.current = true;
+    try {
+      const result = await getCalendarTimeline(family.familyId, timelineRange.from, timelineRange.to);
+      if (focusedRef.current) {
+        setExternalItems(result.items.filter((item) => item.source !== 'calendar'));
+        setExternalError(null);
+      }
+    } catch (caught) {
+      if (focusedRef.current) setExternalError(caught instanceof CalendarTimelineApiError ? caught.message : 'We could not load other family items.');
+    } finally {
+      externalInFlightRef.current = false;
+    }
+  }, [family.familyId, timelineRange.from, timelineRange.to]);
+
   useEffect(() => {
     void getFamilyMembers(family.familyId).then(setMembers).catch(() => {});
     void (async () => {
@@ -120,13 +164,15 @@ export default function CalendarScreen() {
   }, [family.familyId, family.id]);
 
   useEffect(() => { setEvents(null); }, [range.from, range.to]);
+  useEffect(() => { setExternalItems(null); }, [timelineRange.from, timelineRange.to]);
 
   useFocusEffect(useCallback(() => {
     focusedRef.current = true;
     void load(true);
-    const interval = setInterval(() => void load(false), POLL_INTERVAL_MS);
+    void loadExternal();
+    const interval = setInterval(() => { void load(false); void loadExternal(); }, POLL_INTERVAL_MS);
     return () => { focusedRef.current = false; clearInterval(interval); };
-  }, [load]));
+  }, [load, loadExternal]));
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -141,6 +187,18 @@ export default function CalendarScreen() {
   }, [events]);
   const selectedEvents = eventsByDay.get(selectedDay) ?? [];
   const upcoming = (events ?? []).filter((event) => new Date(event.endsAt ?? event.startsAt).getTime() >= Date.now()).slice(0, 6);
+
+  const externalByDay = useMemo(() => {
+    const map = new Map<string, CalendarTimelineItem[]>();
+    for (const item of externalItems ?? []) {
+      const key = externalItemDayKey(item);
+      const list = map.get(key) ?? [];
+      list.push(item);
+      map.set(key, list);
+    }
+    return map;
+  }, [externalItems]);
+  const selectedExternalItems = externalByDay.get(selectedDay) ?? [];
 
   function moveMonth(offset: number) {
     const next = new Date(month.getFullYear(), month.getMonth() + offset, 1);
@@ -188,6 +246,7 @@ export default function CalendarScreen() {
       {editing && openEvent ? <CalendarEventEditor familyId={family.familyId} event={openEvent} households={myHouseholds} members={members} onCancel={() => setEditing(false)} onSaved={saved} /> : null}
 
       {error ? <Card style={[styles.errorCard, { backgroundColor: theme.dangerSoft }]}><AppText variant="body" tone="danger" style={styles.errorText}>{error}</AppText><Button label="Try again" variant="quiet" onPress={() => void load(events === null)} /></Card> : null}
+      {externalError ? <AppText variant="caption" tone="mutedText" style={styles.externalErrorNote}>Tasks/shopping/polls/capsules couldn’t be loaded on the calendar right now — events above are unaffected.</AppText> : null}
 
       <View style={[styles.mainGrid, isWide && styles.mainGridWide]}>
         <View style={styles.calendarColumn}>
@@ -202,15 +261,24 @@ export default function CalendarScreen() {
               {days.map((date) => {
                 const key = localDateKey(date);
                 const dayEvents = eventsByDay.get(key) ?? [];
+                const dayExternal = externalByDay.get(key) ?? [];
+                const totalCount = dayEvents.length + dayExternal.length;
                 const selected = key === selectedDay;
                 const isToday = key === localDateKey(today);
                 const inMonth = date.getMonth() === month.getMonth();
+                const previewEvents = dayEvents.slice(0, 2);
+                const previewExternal = dayExternal.slice(0, Math.max(0, 2 - previewEvents.length));
+                const previewCount = previewEvents.length + previewExternal.length;
                 return (
                   <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => { setSelectedDay(key); setOpenEvent(null); setEditing(false); }} style={[styles.dayCell, isWide && styles.dayCellWide, { backgroundColor: selected ? theme.primarySoft : theme.surface, borderColor: isToday ? theme.primary : theme.border }, !inMonth && styles.outsideDay]}>
                     <AppText variant={isToday ? 'label' : 'caption'} tone={isToday ? 'primary' : inMonth ? 'text' : 'mutedText'}>{date.getDate()}</AppText>
-                    {isWide ? dayEvents.slice(0, 2).map((event) => <AppText key={event.id} variant="caption" numberOfLines={1} style={styles.dayEvent}>{event.allDay ? 'All day · ' : ''}{event.title}</AppText>) : null}
-                    {dayEvents.length ? <View style={[styles.eventDot, { backgroundColor: theme.secondary }]} /> : null}
-                    {isWide && dayEvents.length > 2 ? <AppText variant="caption" tone="mutedText">+{dayEvents.length - 2} more</AppText> : null}
+                    {isWide ? previewEvents.map((event) => <AppText key={event.id} variant="caption" numberOfLines={1} style={styles.dayEvent}>{event.allDay ? 'All day · ' : ''}{event.title}</AppText>) : null}
+                    {isWide ? previewExternal.map((item) => <AppText key={item.id} variant="caption" tone="mutedText" numberOfLines={1} style={styles.dayEvent}>{SOURCE_ICON[item.source]} {item.title}</AppText>) : null}
+                    <View style={styles.dayDotRow}>
+                      {dayEvents.length ? <View style={[styles.eventDot, { backgroundColor: theme.secondary }]} /> : null}
+                      {dayExternal.length ? <View style={[styles.eventDot, { backgroundColor: theme.accent }]} /> : null}
+                    </View>
+                    {isWide && totalCount > previewCount ? <AppText variant="caption" tone="mutedText">+{totalCount - previewCount} more</AppText> : null}
                   </Pressable>
                 );
               })}
@@ -221,8 +289,11 @@ export default function CalendarScreen() {
         <View style={styles.dayColumn}>
           <AppText variant="heading">{new Date(`${selectedDay}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</AppText>
           {!events && !error ? <View style={styles.loading}><ActivityIndicator color={theme.primary} /><AppText variant="caption" tone="mutedText" style={styles.loadingText}>Loading events…</AppText></View> : null}
-          {events && selectedEvents.length === 0 ? <Card style={styles.empty}><AppText variant="body" tone="mutedText">Nothing scheduled for this day.</AppText></Card> : null}
-          <View style={styles.eventList}>{selectedEvents.map((event) => <EventRow key={event.id} event={event} onPress={() => { setOpenEvent(event); setEditing(false); }} />)}</View>
+          {events && selectedEvents.length === 0 && selectedExternalItems.length === 0 ? <Card style={styles.empty}><AppText variant="body" tone="mutedText">Nothing scheduled for this day.</AppText></Card> : null}
+          <View style={styles.eventList}>
+            {selectedEvents.map((event) => <EventRow key={event.id} event={event} onPress={() => { setOpenEvent(event); setEditing(false); }} />)}
+            {selectedExternalItems.map((item) => <ExternalItemRow key={item.id} item={item} onPress={() => router.push(item.route as never)} />)}
+          </View>
         </View>
       </View>
 
@@ -258,6 +329,26 @@ function EventRow({ event, onPress }: { event: CalendarEvent; onPress: () => voi
   );
 }
 
+// A deliberately lighter-weight row than EventRow: no audience badge, no creator avatar,
+// and critically no Edit/Delete affordance — this represents another feature's own item,
+// read-only here, so the only action is navigating to where it actually lives.
+function ExternalItemRow({ item, onPress }: { item: CalendarTimelineItem; onPress: () => void }) {
+  const scheme = useColorScheme();
+  const theme: Theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [pressed && styles.pressed]}>
+      <Card style={styles.eventCard}>
+        <View style={[styles.eventMark, { backgroundColor: theme.accentSoft }]}><AppText variant="heading">{SOURCE_ICON[item.source]}</AppText></View>
+        <View style={styles.eventCopy}>
+          <AppText variant="label" numberOfLines={1}>{item.title}</AppText>
+          <AppText variant="caption" tone="mutedText" style={styles.eventMeta}>{formatExternalItemWhen(item)}</AppText>
+          <AppText variant="caption" style={[styles.eventMeta, { color: theme.warning }]}>{SOURCE_LABEL[item.source]} · tap to open</AppText>
+        </View>
+      </Card>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl, paddingTop: spacing.xl },
   headingRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg, justifyContent: 'space-between' },
@@ -266,6 +357,7 @@ const styles = StyleSheet.create({
   subtitle: { marginTop: spacing.sm },
   errorCard: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
   errorText: { flex: 1 },
+  externalErrorNote: { marginTop: spacing.sm },
   mainGrid: { gap: spacing.xl, marginTop: spacing.xl },
   mainGridWide: { alignItems: 'flex-start', flexDirection: 'row' },
   calendarColumn: { flex: 2, minWidth: 0 },
@@ -279,7 +371,8 @@ const styles = StyleSheet.create({
   dayCellWide: { minHeight: 104, padding: spacing.sm },
   outsideDay: { opacity: 0.48 },
   dayEvent: { marginTop: spacing.xs },
-  eventDot: { borderRadius: 3, height: 6, marginTop: spacing.xs, width: 6 },
+  dayDotRow: { flexDirection: 'row', gap: 3, marginTop: spacing.xs },
+  eventDot: { borderRadius: 3, height: 6, width: 6 },
   loading: { alignItems: 'center', paddingVertical: spacing.xl },
   loadingText: { marginTop: spacing.sm },
   empty: { alignItems: 'center', marginTop: spacing.md },

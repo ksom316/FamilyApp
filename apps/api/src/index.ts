@@ -23,6 +23,7 @@ import {
   resolveEmergency
 } from './emergency-service';
 import { ChatServiceError, createFamilyMessage, getGroupChatUnreadCount, listFamilyMessages, markGroupChatRead } from './chat-service';
+import { getCalendarTimeline } from './calendar-timeline-service';
 import { getDailyBriefing } from './daily-briefing-service';
 import { getWeeklyRecap } from './weekly-recap-service';
 import {
@@ -1225,6 +1226,30 @@ app.delete('/families/:familyId/events/:eventId', sessionMiddleware, async (c) =
     if (error instanceof FamilyServiceError || error instanceof CalendarServiceError) {
       return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
     }
+    throw error;
+  }
+});
+
+// F22 — the unified Family Calendar timeline: manual events (as above) plus a read-only,
+// dynamically-aggregated view of other features' own dated items. See
+// calendar-timeline-service.ts for why nothing is copied into a new table.
+app.get('/families/:familyId/calendar/timeline', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const result = await getCalendarTimeline(
+      createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'), c.req.query('from'), c.req.query('to')
+    );
+    return c.json(result);
+  } catch (error) {
+    if (
+      error instanceof FamilyServiceError ||
+      error instanceof CalendarServiceError ||
+      error instanceof ChoreServiceError ||
+      error instanceof ShoppingServiceError ||
+      error instanceof PollServiceError ||
+      error instanceof TimeCapsuleServiceError
+    ) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
     throw error;
   }
 });
