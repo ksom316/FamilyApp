@@ -1,6 +1,6 @@
 import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useFocusEffect } from 'expo-router';
 import { radius, spacing } from '@familyapp/config';
@@ -35,6 +35,11 @@ const POLL_INTERVAL_MS = 20_000;
 const STALE_AFTER_MS = 5 * 60_000;
 const DURATION_LABELS: Record<ShareDurationMinutes, string> = { 15: '15 minutes', 60: '1 hour', 240: '4 hours' };
 type AudienceType = 'family' | 'household' | 'members';
+
+function browserLocationUnavailable() {
+  if (Platform.OS !== 'web') return false;
+  return typeof navigator === 'undefined' || !navigator.geolocation || globalThis.isSecureContext === false;
+}
 
 function mergeShare(current: FamilyLocationShare[] | null, share: FamilyLocationShare) {
   return [share, ...(current ?? []).filter((item) => item.memberId !== share.memberId)];
@@ -159,6 +164,10 @@ export default function LocationScreen() {
   useFocusEffect(useCallback(() => {
     let cancelled = false;
     if (myShareActive) {
+      if (browserLocationUnavailable()) {
+        setShareError('Location updates are unavailable in this browser. Use a supported browser over HTTPS.');
+        return () => { cancelled = true; stopWatching(); };
+      }
       void Location.watchPositionAsync(
         { accuracy: Location.Accuracy.Balanced, timeInterval: 30_000, distanceInterval: 30 },
         (position) => { void sendPing(position); }
@@ -177,6 +186,7 @@ export default function LocationScreen() {
   }, [myShareActive, sendPing]);
 
   async function getPosition() {
+    if (browserLocationUnavailable()) throw new Error('browser_location_unavailable');
     const permission = await Location.requestForegroundPermissionsAsync();
     if (!permission.granted) throw new Error('permission_denied');
     return Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -193,7 +203,7 @@ export default function LocationScreen() {
       });
       setShares((current) => mergeShare(current, share));
     } catch (error) {
-      setShareError(error instanceof LocationApiError ? error.message : error instanceof Error && error.message === 'permission_denied' ? 'Location permission was denied. Nothing was shared.' : 'We could not get your location. Check your device settings and try again.');
+      setShareError(error instanceof LocationApiError ? error.message : error instanceof Error && error.message === 'permission_denied' ? 'Location permission was denied. Nothing was shared.' : error instanceof Error && error.message === 'browser_location_unavailable' ? 'Location is unavailable in this browser. Use a supported browser over HTTPS.' : 'We could not get your location. Check your device settings and try again.');
     } finally { setStarting(null); }
   }
 
@@ -211,7 +221,7 @@ export default function LocationScreen() {
       });
       setShares((current) => mergeShare(current, share));
     } catch (error) {
-      setFindMeError(error instanceof LocationApiError ? error.message : error instanceof Error && error.message === 'permission_denied' ? 'Location permission was denied. Come Find Me was not started.' : 'We could not get your location. Check your device settings and try again.');
+      setFindMeError(error instanceof LocationApiError ? error.message : error instanceof Error && error.message === 'permission_denied' ? 'Location permission was denied. Come Find Me was not started.' : error instanceof Error && error.message === 'browser_location_unavailable' ? 'Location is unavailable in this browser. Use a supported browser over HTTPS.' : 'We could not get your location. Check your device settings and try again.');
     } finally { setStarting(null); }
   }
 

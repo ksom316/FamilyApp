@@ -3,6 +3,9 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require
 BETTER_AUTH_SECRET=replace-with-a-long-random-secret
 APP_URL=http://localhost:8787
 AUTH_TRUSTED_ORIGINS=http://localhost:8081,http://localhost:19006,http://localhost:3000,familyapp://
+# Enable only when the deployed frontend and API are on different HTTPS sites.
+# Required for a *.vercel.app frontend calling the workers.dev API with cookies.
+AUTH_CROSS_SITE_COOKIES=false
 
 # Private Supabase Storage. Keep both values server-side; never expose the service-role
 # key through an EXPO_PUBLIC_* variable. The bucket name is fixed in code as familyapp-media.

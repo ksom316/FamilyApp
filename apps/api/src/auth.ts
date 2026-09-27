@@ -10,22 +10,47 @@ export type AuthBindings = {
   BETTER_AUTH_SECRET: string;
   APP_URL: string;
   AUTH_TRUSTED_ORIGINS?: string;
+  AUTH_CROSS_SITE_COOKIES?: string;
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   OPENROUTER_API_KEY?: string;
   OPENROUTER_MODEL?: string;
 };
 
+const LOCAL_WEB_ORIGINS = [
+  'http://localhost:8081',
+  'http://localhost:19006',
+  'http://localhost:3000'
+];
+
+function normalizeOrigin(origin: string) {
+  const trimmed = origin.trim();
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return null;
+  }
+}
+
 export function getTrustedOrigins(env: AuthBindings) {
-  const configured = env.AUTH_TRUSTED_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
-  return [
+  const configured = env.AUTH_TRUSTED_ORIGINS?.split(',').map(normalizeOrigin).filter((origin): origin is string => Boolean(origin)) ?? [];
+  const localOrigins = env.APP_URL.startsWith('https://') ? [] : LOCAL_WEB_ORIGINS;
+  return [...new Set([
     'familyapp://',
     'familyapp://*',
-    'http://localhost:8081',
-    'http://localhost:19006',
-    'http://localhost:3000',
+    ...localOrigins,
     ...configured
-  ];
+  ])];
+}
+
+export function getAuthCookieAttributes(env: AuthBindings) {
+  if (env.AUTH_CROSS_SITE_COOKIES?.trim().toLowerCase() !== 'true') return undefined;
+  if (!env.APP_URL.startsWith('https://')) {
+    throw new Error('AUTH_CROSS_SITE_COOKIES requires an HTTPS APP_URL.');
+  }
+  return { httpOnly: true, sameSite: 'none' as const, secure: true };
 }
 
 export function createAuth(env: AuthBindings) {
@@ -66,6 +91,7 @@ export function createAuth(env: AuthBindings) {
     },
     advanced: {
       useSecureCookies: env.APP_URL.startsWith('https://'),
+      defaultCookieAttributes: getAuthCookieAttributes(env),
       database: {
         generateId: 'uuid'
       },

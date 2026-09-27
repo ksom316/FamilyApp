@@ -30,7 +30,8 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "static",
+      "favicon": "./assets/familyapp-app-icon.png"
     },
     "extra": {
       "router": {},
