@@ -4,6 +4,30 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://familyapp-api.ksom316.workers.dev/api/:path*"
+    },
+    {
+      "source": "/families",
+      "destination": "https://familyapp-api.ksom316.workers.dev/families"
+    },
+    {
+      "source": "/families/:path*",
+      "destination": "https://familyapp-api.ksom316.workers.dev/families/:path*"
+    },
+    {
+      "source": "/me",
+      "destination": "https://familyapp-api.ksom316.workers.dev/me"
+    },
+    {
+      "source": "/me/:path*",
+      "destination": "https://familyapp-api.ksom316.workers.dev/me/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://familyapp-api.ksom316.workers.dev/health"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

@@ -37,6 +37,13 @@ describe('web authentication configuration', () => {
     });
   });
 
+  it('keeps first-party production cookies on Better Auth defaults behind the web proxy', () => {
+    expect(getAuthCookieAttributes({
+      ...productionEnv,
+      AUTH_CROSS_SITE_COOKIES: 'false'
+    })).toBeUndefined();
+  });
+
   it('rejects cross-site cookies over HTTP', () => {
     expect(() => getAuthCookieAttributes({
       ...productionEnv,

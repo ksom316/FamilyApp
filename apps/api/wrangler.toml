@@ -7,5 +7,5 @@ compatibility_flags = ["nodejs_compat"]
 crons = ["*/15 * * * *"]
 
 [vars]
-AUTH_CROSS_SITE_COOKIES = "true"
+AUTH_CROSS_SITE_COOKIES = "false"
 AUTH_TRUSTED_ORIGINS = "https://family-app-api-swart.vercel.app"
