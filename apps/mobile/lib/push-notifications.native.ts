@@ -7,9 +7,11 @@ import { Platform } from 'react-native';
 import { apiFetch } from './api';
 import { authClient } from './auth-client';
 import { readPushDestination, routesMatch } from './push-routing';
+import { createRegistrationGate } from './push-registration-gate';
 
 const TOKEN_STORAGE_KEY = 'familyapp.expoPushToken';
 let activePathname = '';
+const registrationGate = createRegistrationGate();
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
@@ -70,7 +72,11 @@ async function saveRegistration(expoPushToken: string) {
   await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, expoPushToken);
 }
 
-export async function registerCurrentPushDevice() {
+function saveRegistrationIfNeeded(userId: string, expoPushToken: string) {
+  return registrationGate.run(`${userId}:${expoPushToken}`, () => saveRegistration(expoPushToken));
+}
+
+export async function registerCurrentPushDevice(userId: string) {
   if (!Device.isDevice || (Platform.OS !== 'android' && Platform.OS !== 'ios')) return;
   try {
     await configureAndroidChannels();
@@ -78,15 +84,17 @@ export async function registerCurrentPushDevice() {
     const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
     if (typeof projectId !== 'string' || !projectId) throw new Error('EAS project ID is missing from Expo config.');
     const token = await Notifications.getExpoPushTokenAsync({ projectId });
-    await saveRegistration(token.data);
+    await saveRegistrationIfNeeded(userId, token.data);
   } catch (error) {
     console.warn('Push registration is unavailable', error);
   }
 }
 
-export function addPushTokenRefreshListener() {
-  return Notifications.addPushTokenListener(() => {
-    void registerCurrentPushDevice();
+export function addPushTokenRefreshListener(userId: string) {
+  return Notifications.addPushTokenListener((token) => {
+    void saveRegistrationIfNeeded(userId, token.data).catch((error) => {
+      console.warn('Refreshed push token could not be registered', error);
+    });
   });
 }
 
@@ -117,6 +125,7 @@ export async function signOutWithPushCleanup() {
   } catch (error) {
     console.warn('Push device could not be unregistered before logout', error);
   } finally {
+    registrationGate.clear();
     await authClient.signOut();
   }
 }

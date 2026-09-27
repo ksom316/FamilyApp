@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { spacing } from '@familyapp/config';
 
 import { disableWebPush, enableWebPush, getWebPushStatus, type WebPushStatus } from '../lib/push-notifications.web';
+import { useAuth } from '../lib/use-auth';
 import { AppText } from './AppText';
 import { Button } from './Button';
 import { Card } from './Card';
@@ -18,6 +19,7 @@ const copy: Record<WebPushStatus, string> = {
 };
 
 export function WebPushSettings() {
+  const { data } = useAuth();
   const [status, setStatus] = useState<WebPushStatus>('checking');
   const [busy, setBusy] = useState(false);
 
@@ -38,7 +40,9 @@ export function WebPushSettings() {
       </View>
       {status === 'checking' ? <ActivityIndicator /> : null}
       {status === 'not-enabled' || status === 'error' ? (
-        <Button label={status === 'error' ? 'Try again' : 'Enable'} loading={busy} onPress={() => void update(enableWebPush)} />
+        <Button label={status === 'error' ? 'Try again' : 'Enable'} loading={busy} onPress={() => {
+          if (data?.user.id) void update(() => enableWebPush(data.user.id));
+        }} />
       ) : null}
       {status === 'enabled' ? (
         <Button label="Turn off" variant="secondary" loading={busy} onPress={() => void update(disableWebPush)} />

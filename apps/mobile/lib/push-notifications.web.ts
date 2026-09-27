@@ -1,9 +1,11 @@
 import { apiFetch } from './api';
 import { authClient } from './auth-client';
+import { createRegistrationGate } from './push-registration-gate';
 
 const SERVICE_WORKER_PATH = '/familyapp-push-sw.js';
 const publicVapidKey = process.env.EXPO_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY?.trim() ?? '';
 const noSubscription = { remove() {} };
+const registrationGate = createRegistrationGate();
 
 export type WebPushStatus = 'checking' | 'unsupported' | 'needs-install' | 'not-enabled' | 'enabled' | 'denied' | 'error';
 
@@ -33,11 +35,18 @@ async function getRegistration() {
   return navigator.serviceWorker.register(SERVICE_WORKER_PATH, { scope: '/' });
 }
 
-async function saveSubscription(subscription: PushSubscription) {
-  const response = await apiFetch('/me/web-push-subscriptions', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(subscription.toJSON())
+function subscriptionKey(userId: string, subscription: PushSubscription) {
+  const serialized = subscription.toJSON();
+  return `${userId}:${serialized.endpoint}:${serialized.keys?.p256dh ?? ''}:${serialized.keys?.auth ?? ''}`;
+}
+
+async function saveSubscription(userId: string, subscription: PushSubscription) {
+  return registrationGate.run(subscriptionKey(userId, subscription), async () => {
+    const response = await apiFetch('/me/web-push-subscriptions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(subscription.toJSON())
+    });
+    if (!response.ok) throw new Error(`Web Push registration failed with status ${response.status}.`);
   });
-  if (!response.ok) throw new Error(`Web Push registration failed with status ${response.status}.`);
 }
 
 async function removeSubscription(subscription: PushSubscription) {
@@ -60,7 +69,7 @@ export async function getWebPushStatus(): Promise<WebPushStatus> {
   }
 }
 
-export async function enableWebPush(): Promise<WebPushStatus> {
+export async function enableWebPush(userId: string): Promise<WebPushStatus> {
   if (!browserSupportsPush() || !publicVapidKey) return 'unsupported';
   if (needsHomeScreenInstall()) return 'needs-install';
   if (Notification.permission === 'denied') return 'denied';
@@ -78,7 +87,7 @@ export async function enableWebPush(): Promise<WebPushStatus> {
       userVisibleOnly: true,
       applicationServerKey: decodeApplicationServerKey(publicVapidKey)
     });
-    await saveSubscription(subscription);
+    await saveSubscription(userId, subscription);
     return 'enabled';
   } catch {
     return 'error';
@@ -94,6 +103,7 @@ export async function disableWebPush(): Promise<WebPushStatus> {
       await removeSubscription(subscription);
       await subscription.unsubscribe();
     }
+    registrationGate.clear();
     return Notification.permission === 'denied' ? 'denied' : 'not-enabled';
   } catch {
     return 'error';
@@ -102,18 +112,18 @@ export async function disableWebPush(): Promise<WebPushStatus> {
 
 export function setActiveNotificationPathname(_pathname: string) {}
 
-export async function registerCurrentPushDevice() {
+export async function registerCurrentPushDevice(userId: string) {
   if (!browserSupportsPush() || !publicVapidKey || needsHomeScreenInstall() || Notification.permission !== 'granted') return;
   try {
     const registration = await getRegistration();
     const subscription = await registration.pushManager.getSubscription();
-    if (subscription) await saveSubscription(subscription);
+    if (subscription) await saveSubscription(userId, subscription);
   } catch (error) {
     console.warn('Existing Web Push subscription could not be synchronized', error);
   }
 }
 
-export function addPushTokenRefreshListener() { return noSubscription; }
+export function addPushTokenRefreshListener(_userId: string) { return noSubscription; }
 export function addPushResponseListener(_listener: (data: Record<string, unknown>) => void) { return noSubscription; }
 export async function consumeLastPushResponse(_listener: (data: Record<string, unknown>) => void) {}
 
@@ -130,6 +140,7 @@ export async function signOutWithPushCleanup() {
   } catch (error) {
     console.warn('Web Push subscription could not be unregistered before logout', error);
   } finally {
+    registrationGate.clear();
     await authClient.signOut();
   }
 }

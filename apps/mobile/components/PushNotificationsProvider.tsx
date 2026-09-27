@@ -15,6 +15,7 @@ import { useAuth } from '../lib/use-auth';
 export function PushNotificationsProvider({ children }: PropsWithChildren) {
   const { data, status } = useAuth();
   const pathname = usePathname();
+  const authenticatedUserId = status === 'authenticated' ? data?.user.id ?? null : null;
 
   useEffect(() => setActiveNotificationPathname(pathname), [pathname]);
 
@@ -30,16 +31,16 @@ export function PushNotificationsProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => {
-    if (status !== 'authenticated') return;
-    void registerCurrentPushDevice();
+    if (!authenticatedUserId) return;
+    void registerCurrentPushDevice(authenticatedUserId);
     void consumeLastPushResponse(openPush);
     const responseSubscription = addPushResponseListener(openPush);
-    const tokenSubscription = addPushTokenRefreshListener();
+    const tokenSubscription = addPushTokenRefreshListener(authenticatedUserId);
     return () => {
       responseSubscription.remove();
       tokenSubscription.remove();
     };
-  }, [data?.user.id, openPush, status]);
+  }, [authenticatedUserId, openPush]);
 
   return children;
 }
