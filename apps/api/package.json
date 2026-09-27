@@ -11,6 +11,7 @@
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.7.5",
     "@better-auth/expo": "^1.7.5",
+    "@block65/webcrypto-web-push": "2.0.0",
     "@familyapp/db": "workspace:*",
     "better-auth": "^1.7.5",
     "drizzle-orm": "^0.44.5",

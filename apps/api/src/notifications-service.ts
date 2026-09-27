@@ -5,6 +5,7 @@ import { familyMembers, familyNotifications, householdMembers, users } from '@fa
 
 import { requireFamilyMembership } from './family-service';
 import { deliverNativePushes } from './expo-push';
+import { deliverWebPushes } from './web-push';
 
 const RECENT_NOTIFICATIONS_LIMIT = 50;
 const MAX_TITLE_LENGTH = 140;
@@ -71,7 +72,13 @@ export async function createNotifications(db: Database, entries: NotificationInp
       entityId: familyNotifications.entityId,
       route: familyNotifications.route
     });
-    await deliverNativePushes(db, inserted);
+    const results = await Promise.allSettled([
+      deliverNativePushes(db, inserted),
+      deliverWebPushes(db, inserted)
+    ]);
+    if (results.some((result) => result.status === 'rejected')) {
+      console.error('One or more push delivery channels failed');
+    }
   } catch (err) {
     console.error('Failed to create notifications', err);
   }

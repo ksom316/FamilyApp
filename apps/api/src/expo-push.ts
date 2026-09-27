@@ -56,12 +56,15 @@ type ExpoTicket = { status: 'ok'; id: string } | {
   details?: { error?: string };
 };
 
-export function shouldSendNativePush(type: string) {
+export function shouldSendPush(type: string) {
   return PUSH_NOTIFICATION_TYPES.has(type);
 }
 
-export function buildSafePushMessage(notification: PushNotificationRecord, token: string): ExpoMessage | null {
-  if (!shouldSendNativePush(notification.type) || !isExpoPushToken(token) || !notification.route) return null;
+// Backwards-compatible name used by the existing native tests/callers.
+export const shouldSendNativePush = shouldSendPush;
+
+export function buildPrivacySafePushContent(notification: PushNotificationRecord) {
+  if (!shouldSendPush(notification.type) || !notification.route) return null;
 
   let title = notification.title;
   let body = notification.message ?? 'Open FamilyApp to view it.';
@@ -85,14 +88,25 @@ export function buildSafePushMessage(notification: PushNotificationRecord, token
     body = 'Open FamilyApp to review a change to your family membership.';
   }
 
-  const critical = CRITICAL_TYPES.has(notification.type);
   return {
-    to: token,
     title: title.slice(0, 140),
     body: body.slice(0, 300),
+    critical: CRITICAL_TYPES.has(notification.type)
+  };
+}
+
+export function buildSafePushMessage(notification: PushNotificationRecord, token: string): ExpoMessage | null {
+  if (!isExpoPushToken(token)) return null;
+  const content = buildPrivacySafePushContent(notification);
+  if (!content) return null;
+
+  return {
+    to: token,
+    title: content.title,
+    body: content.body,
     sound: 'default',
-    priority: critical ? 'high' : 'default',
-    channelId: critical ? 'familyapp-urgent' : 'familyapp-default',
+    priority: content.critical ? 'high' : 'default',
+    channelId: content.critical ? 'familyapp-urgent' : 'familyapp-default',
     data: {
       kind: 'familyapp_notification',
       notificationId: notification.id,
@@ -120,7 +134,7 @@ async function deleteRegistrations(db: Database, ids: string[]) {
 }
 
 export async function deliverNativePushes(db: Database, notifications: PushNotificationRecord[]) {
-  const eligible = notifications.filter((notification) => shouldSendNativePush(notification.type));
+  const eligible = notifications.filter((notification) => shouldSendPush(notification.type));
   if (!eligible.length) return;
 
   try {

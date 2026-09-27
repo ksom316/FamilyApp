@@ -1,7 +1,7 @@
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
-import { authAccounts, authSessions, familyMembers, pushDevices, users } from '@familyapp/db/schema';
+import { authAccounts, authSessions, familyMembers, pushDevices, users, webPushSubscriptions } from '@familyapp/db/schema';
 
 import { leaveFamily, ownerBlockedFromLeaving } from './family-service';
 import { removeMyProfilePhoto } from './profile-service';
@@ -75,6 +75,7 @@ export async function deleteAccount(db: Database, userId: string, storage: Objec
   await db.delete(authAccounts).where(eq(authAccounts.userId, userId));
   await db.delete(authSessions).where(eq(authSessions.userId, userId));
   await db.delete(pushDevices).where(eq(pushDevices.userId, userId));
+  await db.delete(webPushSubscriptions).where(eq(webPushSubscriptions.userId, userId));
 
   await db.update(users).set({
     name: 'Deleted user',

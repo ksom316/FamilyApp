@@ -15,6 +15,9 @@ export type AuthBindings = {
   SUPABASE_SERVICE_ROLE_KEY?: string;
   OPENROUTER_API_KEY?: string;
   OPENROUTER_MODEL?: string;
+  WEB_PUSH_VAPID_PUBLIC_KEY?: string;
+  WEB_PUSH_VAPID_PRIVATE_KEY?: string;
+  WEB_PUSH_SUBJECT?: string;
 };
 
 const LOCAL_WEB_ORIGINS = [

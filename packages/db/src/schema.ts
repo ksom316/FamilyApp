@@ -140,6 +140,32 @@ export const pushDevices = pgTable(
   ]
 );
 
+// Browser Push API subscriptions are separate from Expo native device tokens: an
+// authenticated user may register several browsers, and an endpoint is owned by the
+// account that most recently registered it. The encryption keys and endpoint are private
+// delivery metadata and are never returned through user-facing APIs.
+export const webPushSubscriptions = pgTable(
+  'web_push_subscriptions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex('web_push_subscriptions_endpoint_unique').on(table.endpoint),
+    index('web_push_subscriptions_user_idx').on(table.userId),
+    check('web_push_subscriptions_endpoint_length', sql`char_length(${table.endpoint}) between 32 and 2048`),
+    check('web_push_subscriptions_p256dh_length', sql`char_length(${table.p256dh}) between 40 and 256`),
+    check('web_push_subscriptions_auth_length', sql`char_length(${table.auth}) between 8 and 128`)
+  ]
+);
+
 export const families = pgTable(
   'families',
   {

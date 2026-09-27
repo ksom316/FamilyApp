@@ -9,6 +9,7 @@ import { MemberAvatar } from '../../components/MemberAvatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
+import { WebPushSettings } from '../../components/WebPushSettings';
 import { useCurrentFamily } from '../../lib/family-context';
 import {
   getFamilyNotifications,
@@ -108,6 +109,8 @@ export default function NotificationsScreen() {
           </AppText>
         </View>
       </View>
+
+      <WebPushSettings />
 
       <View style={styles.controls}>
         <View style={styles.filterRow}>

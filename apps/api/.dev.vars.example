@@ -12,6 +12,12 @@ AUTH_CROSS_SITE_COOKIES=false
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=replace-with-your-server-side-service-role-key
 
+# Standards-based browser Web Push. Generate one VAPID key pair and keep the private key
+# server-only. The public key must match EXPO_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY in the web app.
+WEB_PUSH_VAPID_PUBLIC_KEY=
+WEB_PUSH_VAPID_PRIVATE_KEY=
+WEB_PUSH_SUBJECT=mailto:your-email@example.com
+
 # Family Brain AI provider (OpenRouter). Optional: if OPENROUTER_API_KEY is unset,
 # Family Brain returns a graceful "AI is not configured" response instead of erroring.
 # Get a key at https://openrouter.ai/keys — never set this in an EXPO_PUBLIC_* variable.

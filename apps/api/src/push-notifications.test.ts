@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { markDepartureNotificationRead, recipientsExcluding } from './notifications-service';
 import { buildSafePushMessage, shouldSendNativePush } from './expo-push';
 import { isExpoPushToken, readExpoPushToken, readPushPlatform, registerPushDevice } from './push-devices-service';
+import { buildSafeWebPushPayload, deliverWebPushes, isSafeWebPushRoute } from './web-push';
+import { readWebPushSubscription, registerWebPushSubscription } from './web-push-subscriptions-service';
 import { readPushDestination } from '../../mobile/lib/push-routing';
 
 const notification = {
@@ -16,10 +18,35 @@ const notification = {
   entityId: '44444444-4444-4444-8444-444444444444',
   route: '/(family)/emergency/44444444-4444-4444-8444-444444444444'
 };
+const validP256dh = `B${'A'.repeat(86)}`;
+const validAuth = 'B'.repeat(22);
 
 describe('push recipients and registration validation', () => {
   it('deduplicates recipients and excludes the sender', () => {
     expect(recipientsExcluding(['sender', 'recipient', 'recipient'], 'sender')).toEqual(['recipient']);
+  });
+
+  it('validates browser subscriptions and binds endpoint upserts to the authenticated user', async () => {
+    const subscription = {
+      endpoint: 'https://push.example.test/subscriptions/browser-one',
+      keys: { p256dh: validP256dh, auth: validAuth }
+    };
+    expect(readWebPushSubscription(subscription)).toEqual(subscription);
+    expect(() => readWebPushSubscription({ ...subscription, endpoint: 'http://push.example.test/subscriptions/browser-one' })).toThrow(/HTTPS/);
+    expect(() => readWebPushSubscription({ ...subscription, keys: { p256dh: 'bad!', auth: 'short' } })).toThrow(/encryption key/);
+
+    const captured: { inserted?: Record<string, unknown>; conflictSet?: Record<string, unknown> } = {};
+    const fakeDb = {
+      insert: () => ({
+        values: (inserted: Record<string, unknown>) => {
+          captured.inserted = inserted;
+          return { onConflictDoUpdate: async ({ set }: { set: Record<string, unknown> }) => { captured.conflictSet = set; } };
+        }
+      })
+    };
+    await registerWebPushSubscription(fakeDb as never, 'authenticated-user', subscription);
+    expect(captured.inserted).toMatchObject({ userId: 'authenticated-user', endpoint: subscription.endpoint });
+    expect(captured.conflictSet).toMatchObject({ userId: 'authenticated-user', p256dh: subscription.keys.p256dh });
   });
 
   it('accepts Expo tokens and supported native platforms only', () => {
@@ -136,5 +163,69 @@ describe('safe push payload construction', () => {
       notificationId: notification.id,
       route: 'https://example.com'
     })).toBeNull();
+  });
+
+  it('builds a privacy-safe Web Push payload and converts only allowlisted internal routes', () => {
+    const payload = buildSafeWebPushPayload(notification);
+    expect(payload).toMatchObject({
+      title: 'Emergency alert',
+      route: '/emergency/44444444-4444-4444-8444-444444444444'
+    });
+    expect(payload?.body).not.toContain('Sensitive details');
+    expect(payload).not.toHaveProperty('familyId');
+    expect(payload).not.toHaveProperty('entityId');
+    expect(isSafeWebPushRoute('https://example.com')).toBe(false);
+    expect(buildSafeWebPushPayload({ ...notification, route: 'https://example.com' })).toBeNull();
+  });
+
+  it('cleans malformed stored subscriptions without attempting delivery', async () => {
+    const deleted: unknown[] = [];
+    const selectChain = {
+      from: () => selectChain,
+      innerJoin: () => selectChain,
+      where: async () => [{ id: 'bad-subscription', memberId: notification.recipientMemberId, endpoint: 'not-https', p256dh: 'bad', auth: 'bad' }]
+    };
+    const fakeDb = {
+      select: () => selectChain,
+      delete: () => ({ where: async (condition: unknown) => { deleted.push(condition); } })
+    };
+    await expect(deliverWebPushes(fakeDb as never, [notification], {
+      publicKey: 'unused', privateKey: 'unused', subject: 'mailto:test@example.com'
+    }, async () => { throw new Error('must not send'); })).resolves.toBeUndefined();
+    expect(deleted).toHaveLength(1);
+  });
+
+  it('removes a permanently expired subscription after a 410 response', async () => {
+    const deleted: unknown[] = [];
+    const selectChain = {
+      from: () => selectChain,
+      innerJoin: () => selectChain,
+      where: async () => [{
+        id: 'expired-subscription',
+        memberId: notification.recipientMemberId,
+        endpoint: 'https://push.example.test/subscriptions/expired-browser',
+        p256dh: validP256dh,
+        auth: validAuth
+      }]
+    };
+    const fakeDb = {
+      select: () => selectChain,
+      delete: () => ({ where: async (condition: unknown) => { deleted.push(condition); } })
+    };
+    await deliverWebPushes(
+      fakeDb as never,
+      [notification],
+      { publicKey: 'unused', privateKey: 'unused', subject: 'mailto:test@example.com' },
+      async () => new Response(null, { status: 410 }),
+      async () => ({ method: 'POST', headers: { authorization: '', ttl: '1', 'content-encoding': '', 'content-length': '0', 'content-type': '' }, body: new Uint8Array() })
+    );
+    expect(deleted).toHaveLength(1);
+  });
+
+  it('keeps Web Push lookup failures best-effort', async () => {
+    const fakeDb = { select: () => { throw new Error('database unavailable'); } };
+    await expect(deliverWebPushes(fakeDb as never, [notification], {
+      publicKey: 'unused', privateKey: 'unused', subject: 'mailto:test@example.com'
+    })).resolves.toBeUndefined();
   });
 });
