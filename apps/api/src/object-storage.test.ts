@@ -17,7 +17,7 @@ describe('Supabase family-prefix cleanup', () => {
         if (request.prefix === `families/${FAMILY_ID}`) {
           rootLists += 1;
           return Response.json(rootLists === 1
-            ? [{ name: 'memories', id: null, metadata: null }, { name: 'time-capsules', id: null, metadata: null }]
+            ? [{ name: 'family-photo', id: 'three', metadata: { size: 30 } }, { name: 'memories', id: null, metadata: null }, { name: 'time-capsules', id: null, metadata: null }]
             : []);
         }
         if (request.prefix === `families/${FAMILY_ID}/memories`) {
@@ -46,8 +46,9 @@ describe('Supabase family-prefix cleanup', () => {
     });
     const deleted = await storage?.deletePrefix(`families/${FAMILY_ID}/`);
 
-    expect(deleted).toBe(2);
+    expect(deleted).toBe(3);
     expect(deletedBatches.flat().sort()).toEqual([
+      `families/${FAMILY_ID}/family-photo`,
       `families/${FAMILY_ID}/memories/memory-one`,
       `families/${FAMILY_ID}/time-capsules/capsule-one/attachments/photo-one`
     ].sort());

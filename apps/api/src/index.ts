@@ -46,6 +46,12 @@ import {
   removeFamilyMember,
   transferFamilyOwnership
 } from './family-service';
+import {
+  FamilyPhotoServiceError,
+  getFamilyPhotoKey,
+  removeFamilyPhoto,
+  uploadFamilyPhoto
+} from './family-photo-service';
 import { AccountServiceError, deleteAccount } from './account-service';
 import {
   addHouseholdMember,
@@ -528,6 +534,66 @@ app.get('/families/:familyId/members/:memberId/photo', sessionMiddleware, async 
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof ProfileServiceError) {
       return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    }
+    throw error;
+  }
+});
+
+app.get('/families/:familyId/photo', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const objectKey = await getFamilyPhotoKey(createApiDatabase(c.env), session.user.id, c.req.param('familyId'));
+    const storage = createObjectStorage(c.env);
+    if (!storage) return c.json({ error: 'Family photo storage is not configured yet.', code: 'storage_unavailable' }, 503);
+    const object = await storage.get(objectKey);
+    if (!object) return c.json({ error: 'No family photo is set.', code: 'photo_not_found' }, 404);
+    const contentType = object.contentType?.split(';')[0]?.trim();
+    if (!contentType || !['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+      return c.json({ error: 'The stored family photo is invalid.', code: 'invalid_photo' }, 415);
+    }
+    return c.body(object.body, 200, {
+      'Content-Type': contentType,
+      'Cache-Control': 'private, max-age=3600',
+      'X-Content-Type-Options': 'nosniff'
+    });
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof FamilyPhotoServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 413 | 415 | 502 | 503);
+    }
+    throw error;
+  }
+});
+
+app.post('/families/:familyId/photo', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    const form = await c.req.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) throw new FamilyPhotoServiceError('invalid_photo', 'Choose a family photo to upload.');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const photo = await uploadFamilyPhoto(
+      createApiDatabase(c.env), session.user.id, c.req.param('familyId'), bytes, createObjectStorage(c.env)
+    );
+    return c.json({ photo }, 201);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof FamilyPhotoServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 413 | 415 | 502 | 503);
+    }
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/photo', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await removeFamilyPhoto(createApiDatabase(c.env), session.user.id, c.req.param('familyId'), createObjectStorage(c.env));
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError || error instanceof FamilyPhotoServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 413 | 415 | 502 | 503);
     }
     throw error;
   }

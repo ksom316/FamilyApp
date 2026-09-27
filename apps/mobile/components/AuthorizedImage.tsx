@@ -9,7 +9,14 @@ import { authClient } from '../lib/auth-client';
 
 type ImageSource = { uri: string; headers?: Record<string, string> };
 
-export function AuthorizedImage({ path, style, resizeMode = 'cover' }: { path: string; style?: StyleProp<ImageStyle>; resizeMode?: 'cover' | 'contain' }) {
+export function AuthorizedImage({ path, style, resizeMode = 'cover', transparentFallback = false, onLoad, onError }: {
+  path: string;
+  style?: StyleProp<ImageStyle>;
+  resizeMode?: 'cover' | 'contain';
+  transparentFallback?: boolean;
+  onLoad?: () => void;
+  onError?: () => void;
+}) {
   const { colors: theme } = useAppTheme();
   const [source, setSource] = useState<ImageSource | null>(null);
   const [failed, setFailed] = useState(false);
@@ -33,7 +40,7 @@ export function AuthorizedImage({ path, style, resizeMode = 'cover' }: { path: s
           if (active) setSource({ uri: `${apiUrl}${path}`, headers: cookie ? { Cookie: cookie } : undefined });
         }
       } catch {
-        if (active) setFailed(true);
+        if (active) { setFailed(true); onError?.(); }
       }
     })();
 
@@ -41,13 +48,13 @@ export function AuthorizedImage({ path, style, resizeMode = 'cover' }: { path: s
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [path]);
+  }, [onError, path]);
 
   if (failed || !source) {
-    return <View style={[styles.fallback, { backgroundColor: theme.backgroundTint }, style]} />;
+    return <View style={[styles.fallback, !transparentFallback && { backgroundColor: theme.backgroundTint }, style]} />;
   }
 
-  return <Image source={source} style={style} resizeMode={resizeMode} onError={() => setFailed(true)} />;
+  return <Image source={source} style={style} resizeMode={resizeMode} onLoad={onLoad} onError={() => { setFailed(true); onError?.(); }} />;
 }
 
 const styles = StyleSheet.create({ fallback: {} });

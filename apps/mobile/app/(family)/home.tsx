@@ -1,10 +1,12 @@
 import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, AppState, Easing, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, Easing, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { radius, spacing, type Theme, type ThemeName } from '@familyapp/config';
 
 import { AppText } from '../../components/AppText';
+import { AuthorizedImage } from '../../components/AuthorizedImage';
 import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -16,6 +18,11 @@ import { getFamilyEmergencies, type EmergencyIncident } from '../../lib/emergenc
 import { useCurrentFamily } from '../../lib/family-context';
 import { getFamilyNotifications } from '../../lib/notifications';
 import { getFamilyMembers } from '../../lib/families';
+import { FamilyPhotoApiError, familyPhotoUrl, removeFamilyPhoto, uploadFamilyPhoto } from '../../lib/family-photo';
+import { getFamilyMessagesUnreadCount } from '../../lib/chat';
+import { buildHomeMessagesSummary, HOME_MESSAGES_ROUTE, type HomeMessagesSummary } from '../../lib/home-messages';
+import { getPrivateConversations } from '../../lib/private-chat';
+import { subscribeToAttentionRefresh } from '../../lib/navigation-attention';
 import { getFamilyLocationShares, type FamilyLocationShare } from '../../lib/location';
 import { getFamilyMemories, type FamilyMemory } from '../../lib/memories';
 import { getFamilyPlans, type FamilyPlans } from '../../lib/plans';
@@ -26,6 +33,7 @@ import { useReducedMotion } from '../../lib/motion';
 import { getWeeklyRecap, WeeklyRecapApiError, type WeeklyRecap } from '../../lib/weekly-recap';
 
 const BRIEFING_POLL_INTERVAL_MS = 60_000;
+const MESSAGES_POLL_INTERVAL_MS = 30_000;
 
 function greetingForHour(hour: number) {
   if (hour < 12) return 'Good morning';
@@ -60,11 +68,51 @@ export default function FamilyHomeScreen() {
   const [weeklyRecap, setWeeklyRecap] = useState<WeeklyRecap | null>(null);
   const [weeklyRecapError, setWeeklyRecapError] = useState<string | null>(null);
   const [motionFocused, setMotionFocused] = useState(false);
+  const [messages, setMessages] = useState<HomeMessagesSummary | null>(null);
+  const [messagesFailed, setMessagesFailed] = useState(false);
+  const [familyPhotoRevision, setFamilyPhotoRevision] = useState(() => Date.now());
 
   useFocusEffect(useCallback(() => {
     setMotionFocused(true);
+    setFamilyPhotoRevision(Date.now());
     return () => setMotionFocused(false);
   }, []));
+
+  const messagesFocusedRef = useRef(false);
+  const messagesInFlightRef = useRef(false);
+  const loadMessages = useCallback(async () => {
+    if (!messagesFocusedRef.current || messagesInFlightRef.current) return;
+    messagesInFlightRef.current = true;
+    try {
+      const [familyUnreadCount, conversations] = await Promise.all([
+        getFamilyMessagesUnreadCount(family.familyId),
+        getPrivateConversations(family.familyId)
+      ]);
+      if (messagesFocusedRef.current) {
+        setMessages(buildHomeMessagesSummary(family.familyName, family.id, familyUnreadCount, conversations));
+        setMessagesFailed(false);
+      }
+    } catch {
+      if (messagesFocusedRef.current) setMessagesFailed(true);
+    } finally {
+      messagesInFlightRef.current = false;
+    }
+  }, [family.familyId, family.familyName, family.id]);
+
+  useFocusEffect(useCallback(() => {
+    messagesFocusedRef.current = true;
+    setMessages(null);
+    void loadMessages();
+    const interval = setInterval(() => void loadMessages(), MESSAGES_POLL_INTERVAL_MS);
+    const appState = AppState.addEventListener('change', (state) => { if (state === 'active') void loadMessages(); });
+    const unsubscribe = subscribeToAttentionRefresh(() => void loadMessages());
+    return () => {
+      messagesFocusedRef.current = false;
+      clearInterval(interval);
+      appState.remove();
+      unsubscribe();
+    };
+  }, [loadMessages]));
 
   useEffect(() => {
     let active = true;
@@ -242,7 +290,17 @@ export default function FamilyHomeScreen() {
           <AppText variant="display" style={styles.title}>{family.familyName}</AppText>
           <AppText variant="body" tone="mutedText" style={styles.subtitle}>Your family’s home, all in one warm place.</AppText>
         </View>
-        <HomeArtwork active={motionFocused} familyName={family.familyName} isWide={isWideHero} theme={theme} themeName={themeName} />
+        <HomeArtwork
+          active={motionFocused}
+          canManage={family.role === 'owner' || family.role === 'guardian'}
+          familyId={family.familyId}
+          familyName={family.familyName}
+          isWide={isWideHero}
+          photoRevision={familyPhotoRevision}
+          onPhotoChanged={() => setFamilyPhotoRevision(Date.now())}
+          theme={theme}
+          themeName={themeName}
+        />
       </FadeInView>
 
       {activeEmergencies && activeEmergencies.length > 0 ? (
@@ -254,6 +312,10 @@ export default function FamilyHomeScreen() {
           <Button label="View →" variant="quiet" onPress={() => router.push('/(family)/emergency' as never)} />
         </Card></FadeInView>
       ) : null}
+
+      <FadeInView delay={55}>
+        <HomeMessagesCard summary={messages} failed={messagesFailed} isCompact={isCompact} theme={theme} />
+      </FadeInView>
 
       <FadeInView delay={70}><TodayBriefing briefing={briefing} error={briefingError} onRetry={() => void loadBriefing()} theme={theme} isCompact={isCompact} /></FadeInView>
 
@@ -643,9 +705,79 @@ function RecapStat({ label, theme }: { label: string; theme: Theme }) {
   );
 }
 
-function HomeArtwork({ active, familyName, isWide, theme, themeName }: { active: boolean; familyName: string; isWide: boolean; theme: Theme; themeName: ThemeName }) {
+function HomeMessagesCard({ summary, failed, isCompact, theme }: {
+  summary: HomeMessagesSummary | null;
+  failed: boolean;
+  isCompact: boolean;
+  theme: Theme;
+}) {
+  const total = summary?.totalUnreadCount ?? 0;
+  return (
+    <Card style={[styles.messagesCard, { backgroundColor: theme.secondarySoft }]}>
+      <View style={[styles.messagesTop, isCompact && styles.messagesTopCompact]}>
+        <View style={styles.messagesIdentity}>
+          <View style={[styles.messagesIcon, { backgroundColor: theme.surface }]}><AppText variant="heading">💬</AppText></View>
+          <View style={styles.messagesCopy}>
+            <AppText variant="heading">Messages</AppText>
+            {failed ? (
+              <AppText variant="caption" tone="mutedText">Unread messages are unavailable right now</AppText>
+            ) : summary ? (
+              <AppText accessibilityLabel={`${total} unread messages`} variant="body" tone={total > 0 ? 'secondary' : 'mutedText'}>
+                {total > 0 ? `${total} unread message${total === 1 ? '' : 's'}` : "You're all caught up"}
+              </AppText>
+            ) : <ActivityIndicator color={theme.secondary} />}
+          </View>
+        </View>
+        <Button
+          accessibilityLabel="Open Messages"
+          label="Open Messages"
+          onPress={() => router.push(HOME_MESSAGES_ROUTE as never)}
+          variant="secondary"
+          style={isCompact ? styles.messagesButtonCompact : undefined}
+        />
+      </View>
+      {summary?.entries.length ? (
+        <View style={styles.messagePreviewList}>
+          {summary.entries.map((entry) => (
+            <Pressable
+              key={entry.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${entry.title}, ${entry.unreadCount} unread. ${entry.preview}`}
+              onPress={() => router.push(entry.route as never)}
+              style={[styles.messagePreview, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            >
+              <View style={styles.messagePreviewCopy}>
+                <AppText variant="label" numberOfLines={1}>{entry.title}</AppText>
+                <AppText variant="caption" tone="mutedText" numberOfLines={1}>{entry.preview}</AppText>
+              </View>
+              <View style={[styles.messageUnreadBadge, { backgroundColor: theme.primary }]}>
+                <AppText variant="caption" style={{ color: theme.textOnPrimary }}>{entry.unreadCount > 99 ? '99+' : entry.unreadCount}</AppText>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
+function HomeArtwork({ active, canManage, familyId, familyName, isWide, photoRevision, onPhotoChanged, theme, themeName }: {
+  active: boolean;
+  canManage: boolean;
+  familyId: string;
+  familyName: string;
+  isWide: boolean;
+  photoRevision: number;
+  onPhotoChanged: () => void;
+  theme: Theme;
+  themeName: ThemeName;
+}) {
   const reduced = useReducedMotion();
   const drift = useRef(new Animated.Value(0)).current;
+  const [hasPhoto, setHasPhoto] = useState<boolean | null>(null);
+  const [showActions, setShowActions] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const character: Record<ThemeName, { duration: number; rotate: number; x: number; y: number; scale: number }> = {
     family: { duration: 3800, rotate: 0.8, x: 1, y: -4, scale: 1.018 },
     ocean: { duration: 4600, rotate: 0.35, x: 4, y: -5, scale: 1.012 },
@@ -667,6 +799,50 @@ function HomeArtwork({ active, familyName, isWide, theme, themeName }: { active:
     return () => loop.stop();
   }, [active, drift, reduced, spec.duration]);
 
+  useEffect(() => { setHasPhoto(null); setShowActions(false); }, [photoRevision]);
+  const photoLoaded = useCallback(() => setHasPhoto(true), []);
+  const photoFailed = useCallback(() => setHasPhoto(false), []);
+
+  async function choosePhoto() {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) { setError('Allow photo access to choose a family photo.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsEditing: true, aspect: [16, 9] });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setBusy(true);
+    try {
+      await uploadFamilyPhoto(familyId, { uri: asset.uri, name: asset.fileName ?? `family-${Date.now()}.jpg`, type: asset.mimeType ?? 'image/jpeg' });
+      setHasPhoto(true);
+      setShowActions(false);
+      onPhotoChanged();
+    } catch (caught) {
+      setError(caught instanceof FamilyPhotoApiError ? caught.message : 'The family photo could not be uploaded.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function confirmRemove() {
+    Alert.alert('Remove family photo?', 'The colorful FamilyApp artwork will return.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => void (async () => {
+        setBusy(true);
+        setError(null);
+        try {
+          await removeFamilyPhoto(familyId);
+          setHasPhoto(false);
+          setShowActions(false);
+          onPhotoChanged();
+        } catch (caught) {
+          setError(caught instanceof FamilyPhotoApiError ? caught.message : 'The family photo could not be removed.');
+        } finally {
+          setBusy(false);
+        }
+      })() }
+    ]);
+  }
+
   return (
     <Animated.View style={[
       styles.welcomeArt,
@@ -686,6 +862,32 @@ function HomeArtwork({ active, familyName, isWide, theme, themeName }: { active:
       <View style={[styles.artOrb, { backgroundColor: theme.primarySoft }]} />
       <View style={[styles.artOrbSmall, { backgroundColor: theme.accent }]} />
       <Avatar name={familyName} size={68} />
+      <AuthorizedImage
+        path={familyPhotoUrl(familyId, photoRevision)}
+        style={styles.familyPhoto}
+        transparentFallback
+        onLoad={photoLoaded}
+        onError={photoFailed}
+      />
+      {hasPhoto ? <View style={styles.familyPhotoShade} pointerEvents="none" /> : null}
+      {hasPhoto ? <AppText variant="label" style={styles.familyPhotoName} numberOfLines={1}>{familyName}</AppText> : null}
+      {hasPhoto === null ? <ActivityIndicator color={theme.primary} style={styles.familyPhotoLoading} /> : null}
+      {canManage ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={hasPhoto ? 'Manage family photo' : 'Add family photo'}
+          disabled={busy}
+          onPress={() => hasPhoto ? setShowActions((current) => !current) : void choosePhoto()}
+          style={[styles.familyPhotoEdit, !hasPhoto && styles.familyPhotoAdd, { backgroundColor: theme.surface }]}
+        ><AppText variant="label">{hasPhoto ? '📷' : '📷 Add family photo'}</AppText></Pressable>
+      ) : null}
+      {showActions && hasPhoto ? (
+        <View style={[styles.familyPhotoActions, { backgroundColor: theme.surface }]}>
+          <Button label="Change" variant="quiet" disabled={busy} onPress={() => void choosePhoto()} />
+          <Button label="Remove" variant="quiet" disabled={busy} onPress={confirmRemove} />
+        </View>
+      ) : null}
+      {error ? <View style={[styles.familyPhotoError, { backgroundColor: theme.dangerSoft }]}><AppText variant="caption" tone="danger" numberOfLines={2}>{error}</AppText></View> : null}
     </Animated.View>
   );
 }
@@ -704,10 +906,29 @@ const styles = StyleSheet.create({
   welcomeArt: { alignItems: 'center', borderRadius: radius.xl, height: 176, justifyContent: 'center', overflow: 'hidden', position: 'relative' },
   welcomeArtStacked: { width: '100%' },
   welcomeArtWide: { flex: 0.78, minWidth: 280 },
+  familyPhoto: { ...StyleSheet.absoluteFillObject, height: '100%', width: '100%' },
+  familyPhotoShade: { backgroundColor: 'rgba(10, 12, 20, 0.25)', bottom: 0, height: 58, left: 0, position: 'absolute', right: 0 },
+  familyPhotoName: { bottom: spacing.md, color: '#FFFFFF', left: spacing.md, maxWidth: '65%', position: 'absolute' },
+  familyPhotoLoading: { left: spacing.sm, position: 'absolute', top: spacing.sm },
+  familyPhotoEdit: { alignItems: 'center', borderRadius: radius.pill, height: 38, justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm, width: 38 },
+  familyPhotoAdd: { paddingHorizontal: spacing.md, width: 'auto' },
+  familyPhotoActions: { borderRadius: radius.md, flexDirection: 'row', paddingHorizontal: spacing.xs, position: 'absolute', right: spacing.sm, top: 54 },
+  familyPhotoError: { borderRadius: radius.sm, bottom: spacing.sm, left: spacing.sm, maxWidth: '72%', padding: spacing.xs, position: 'absolute' },
   artOrb: { borderRadius: 100, height: 160, left: -35, position: 'absolute', top: 85, width: 160 },
   artOrbSmall: { borderRadius: 40, height: 54, position: 'absolute', right: 32, top: 26, width: 54 },
   emergencyBanner: { alignItems: 'center', borderWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.lg, padding: spacing.lg },
   emergencyBannerCopy: { flex: 1, minWidth: 0 },
+  messagesCard: { marginTop: spacing.lg, padding: spacing.lg },
+  messagesTop: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
+  messagesTopCompact: { alignItems: 'stretch', flexDirection: 'column' },
+  messagesIdentity: { alignItems: 'center', flexDirection: 'row', flex: 1, gap: spacing.md, minWidth: 0 },
+  messagesIcon: { alignItems: 'center', borderRadius: radius.md, height: 48, justifyContent: 'center', width: 48 },
+  messagesCopy: { flex: 1, gap: spacing.xs, minWidth: 0 },
+  messagesButtonCompact: { alignSelf: 'stretch' },
+  messagePreviewList: { gap: spacing.sm, marginTop: spacing.md },
+  messagePreview: { alignItems: 'center', borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 58, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  messagePreviewCopy: { flex: 1, minWidth: 0 },
+  messageUnreadBadge: { alignItems: 'center', borderRadius: radius.pill, justifyContent: 'center', minHeight: 26, minWidth: 26, paddingHorizontal: spacing.xs },
   overview: { gap: spacing.md, marginTop: spacing.lg },
   overviewPressable: { flex: 1 },
   overviewWide: { flexDirection: 'row' },

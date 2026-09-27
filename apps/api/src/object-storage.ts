@@ -2,6 +2,7 @@ const MEDIA_BUCKET = 'familyapp-media';
 
 export type ObjectStorageObject = {
   body: ReadableStream<Uint8Array>;
+  contentType: string | null;
 };
 
 export interface ObjectStorage {
@@ -111,7 +112,7 @@ export function createObjectStorage(bindings: ObjectStorageBindings): ObjectStor
       if (response.status === 404) return null;
       if (!response.ok) throw storageError('download', response);
       if (!response.body) throw new Error('Supabase Storage download returned an empty response body.');
-      return { body: response.body };
+      return { body: response.body, contentType: response.headers.get('content-type') };
     },
 
     async delete(key) {
