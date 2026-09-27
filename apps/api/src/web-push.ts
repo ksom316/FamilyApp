@@ -82,6 +82,15 @@ function isStoredSubscriptionValid(subscription: StoredSubscription) {
   }
 }
 
+function providerCategory(endpoint: string) {
+  const hostname = new URL(endpoint).hostname.toLowerCase();
+  if (hostname === 'fcm.googleapis.com' || hostname.endsWith('.googleapis.com')) return 'google';
+  if (hostname.endsWith('.push.apple.com')) return 'apple';
+  if (hostname.endsWith('.mozilla.com')) return 'mozilla';
+  if (hostname.endsWith('.windows.com') || hostname.endsWith('.microsoft.com')) return 'microsoft';
+  return 'other';
+}
+
 async function deleteSubscriptions(db: Database, ids: string[]) {
   if (ids.length) await db.delete(webPushSubscriptions).where(inArray(webPushSubscriptions.id, [...new Set(ids)]));
 }
@@ -121,6 +130,17 @@ export async function deliverWebPushes(
 
     const invalidIds = subscriptions.filter((subscription) => !isStoredSubscriptionValid(subscription)).map((subscription) => subscription.id);
     await deleteSubscriptions(db, invalidIds);
+    const validSubscriptions = subscriptions.filter(isStoredSubscriptionValid);
+    console.info('Web Push delivery batch', {
+      notifications: eligible.length,
+      subscriptions: validSubscriptions.length,
+      invalidSubscriptionsRemoved: invalidIds.length
+    });
+
+    let attempted = 0;
+    let accepted = 0;
+    let rejected = 0;
+    let expired = 0;
 
     for (const notification of eligible) {
       const payload = buildSafeWebPushPayload(notification);
@@ -129,6 +149,8 @@ export async function deliverWebPushes(
         subscription.memberId === notification.recipientMemberId && isStoredSubscriptionValid(subscription)
       ));
       for (const subscription of recipients) {
+        attempted += 1;
+        const provider = providerCategory(subscription.endpoint);
         try {
           const request = await build({
             data: JSON.stringify(payload),
@@ -144,17 +166,27 @@ export async function deliverWebPushes(
             keys: { p256dh: subscription.p256dh, auth: subscription.auth }
           }, validatedConfig);
           const response = await send(subscription.endpoint, request);
+          console.info('Web Push provider response', { provider, status: response.status });
           if (response.status === 404 || response.status === 410) {
+            expired += 1;
             await deleteSubscriptions(db, [subscription.id]);
           } else if (!response.ok) {
+            rejected += 1;
             console.warn(`Web Push provider rejected a notification with status ${response.status}`);
+          } else {
+            accepted += 1;
           }
         } catch (error) {
+          rejected += 1;
           // Never include endpoints or encryption material in logs.
-          console.warn('Web Push delivery failed', error instanceof Error ? error.message : 'unknown error');
+          console.warn('Web Push delivery failed', {
+            provider,
+            reason: error instanceof Error ? error.name : 'unknown error'
+          });
         }
       }
     }
+    console.info('Web Push delivery summary', { attempted, accepted, rejected, expired });
   } catch (error) {
     // The in-app notification already exists and remains authoritative.
     console.error('Web Push delivery failed', error);

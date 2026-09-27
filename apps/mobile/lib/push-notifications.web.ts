@@ -6,6 +6,7 @@ const SERVICE_WORKER_PATH = '/familyapp-push-sw.js';
 const publicVapidKey = process.env.EXPO_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY?.trim() ?? '';
 const noSubscription = { remove() {} };
 const registrationGate = createRegistrationGate();
+let serviceWorkerRegistration: Promise<ServiceWorkerRegistration> | null = null;
 
 export type WebPushStatus = 'checking' | 'unsupported' | 'needs-install' | 'not-enabled' | 'enabled' | 'denied' | 'error';
 
@@ -32,7 +33,25 @@ function decodeApplicationServerKey(value: string) {
 }
 
 async function getRegistration() {
-  return navigator.serviceWorker.register(SERVICE_WORKER_PATH, { scope: '/' });
+  if (!serviceWorkerRegistration) {
+    serviceWorkerRegistration = navigator.serviceWorker.register(SERVICE_WORKER_PATH, {
+      scope: '/',
+      updateViaCache: 'none'
+    }).then(async (registration) => {
+      // Force a version check on authenticated startup. The active worker remains
+      // usable if the check cannot reach the host (for example, while offline).
+      try {
+        await registration.update();
+      } catch (error) {
+        console.warn('Web Push service worker update check failed', error);
+      }
+      return registration;
+    }).catch((error) => {
+      serviceWorkerRegistration = null;
+      throw error;
+    });
+  }
+  return serviceWorkerRegistration;
 }
 
 function subscriptionKey(userId: string, subscription: PushSubscription) {

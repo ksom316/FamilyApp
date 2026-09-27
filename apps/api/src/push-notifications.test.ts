@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 
 import { markDepartureNotificationRead, recipientsExcluding } from './notifications-service';
 import { buildSafePushMessage, shouldSendNativePush } from './expo-push';
@@ -268,6 +269,186 @@ describe('safe push payload construction', () => {
       'utf8'
     );
     expect(serviceWorker).not.toMatch(/\btag\s*:/);
+  });
+
+  it('displays two distinct Web Push events independently in the active worker', async () => {
+    const serviceWorker = readFileSync(
+      new URL('../../mobile/public/familyapp-push-sw.js', import.meta.url),
+      'utf8'
+    );
+    const listeners = new Map<string, (event: {
+      data?: { json(): unknown };
+      waitUntil(promise: Promise<unknown>): void;
+    }) => void>();
+    const displayed: Array<{ title: string; options: Record<string, unknown> }> = [];
+    const skipWaiting = vi.fn(async () => undefined);
+    const claim = vi.fn(async () => undefined);
+    const workerSelf = {
+      addEventListener: (name: string, listener: (typeof listeners extends Map<string, infer T> ? T : never)) => {
+        listeners.set(name, listener);
+      },
+      skipWaiting,
+      clients: { claim },
+      registration: {
+        showNotification: async (title: string, options: Record<string, unknown>) => {
+          displayed.push({ title, options });
+        }
+      },
+      location: { origin: 'https://familyapp.example' }
+    };
+    runInNewContext(serviceWorker, {
+      self: workerSelf,
+      URL,
+      console: { info: vi.fn() }
+    });
+
+    async function dispatch(name: string, payload?: Record<string, unknown>) {
+      const pending: Promise<unknown>[] = [];
+      const listener = listeners.get(name);
+      expect(listener).toBeTypeOf('function');
+      listener?.({
+        ...(payload ? { data: { json: () => payload } } : {}),
+        waitUntil: (promise) => { pending.push(Promise.resolve(promise)); }
+      });
+      await Promise.all(pending);
+    }
+
+    await dispatch('install');
+    await dispatch('activate');
+    await dispatch('push', { title: 'Ama', body: 'Message A', route: '/chat/family' });
+    await dispatch('push', { title: 'Ama', body: 'Message B', route: '/chat/family' });
+
+    expect(skipWaiting).toHaveBeenCalledOnce();
+    expect(claim).toHaveBeenCalledOnce();
+    expect(displayed).toHaveLength(2);
+    expect(displayed.map(({ title, options }) => ({ title, body: options.body }))).toEqual([
+      { title: 'Ama', body: 'Message A' },
+      { title: 'Ama', body: 'Message B' }
+    ]);
+    for (const { options } of displayed) {
+      expect(options).not.toHaveProperty('tag');
+      expect(options).not.toHaveProperty('renotify');
+      expect(options).not.toHaveProperty('silent');
+      expect(options).not.toHaveProperty('requireInteraction');
+    }
+  });
+
+  it('sends two distinct message payloads independently to the same browser subscription', async () => {
+    const selectChain = {
+      from: () => selectChain,
+      innerJoin: () => selectChain,
+      where: async () => [{
+        id: 'desktop-subscription',
+        memberId: notification.recipientMemberId,
+        endpoint: 'https://fcm.googleapis.com/web-push/desktop-browser',
+        p256dh: validP256dh,
+        auth: validAuth
+      }]
+    };
+    const fakeDb = {
+      select: () => selectChain,
+      delete: () => ({ where: async () => undefined })
+    };
+    const builtPayloads: Array<{ data: string; options?: Record<string, unknown> }> = [];
+    const sentRequests: RequestInit[] = [];
+    const first = {
+      ...notification,
+      id: '55555555-5555-4555-8555-555555555555',
+      type: 'family_message',
+      title: 'Ama • Family',
+      message: 'Message A',
+      route: '/(family)/chat/family'
+    };
+    const second = {
+      ...first,
+      id: '66666666-6666-4666-8666-666666666666',
+      message: 'Message B'
+    };
+
+    await deliverWebPushes(
+      fakeDb as never,
+      [first, second],
+      testVapidConfig,
+      async (_endpoint, request) => {
+        expect(request).toBeDefined();
+        sentRequests.push(request!);
+        return new Response(null, { status: 201 });
+      },
+      async (message) => {
+        builtPayloads.push(message);
+        return {
+          method: 'POST',
+          headers: {
+            authorization: 'test',
+            ttl: '86400',
+            urgency: 'normal',
+            'content-encoding': 'aes128gcm',
+            'content-length': '1',
+            'content-type': 'application/octet-stream'
+          },
+          body: new Uint8Array([1])
+        };
+      }
+    );
+
+    expect(sentRequests).toHaveLength(2);
+    expect(builtPayloads).toHaveLength(2);
+    expect(builtPayloads.map(({ data }) => JSON.parse(data).body)).toEqual(['Message A', 'Message B']);
+    expect(builtPayloads.every(({ options }) => !options?.topic)).toBe(true);
+  });
+
+  it('continues to an active browser subscription when another stored subscription fails', async () => {
+    const selectChain = {
+      from: () => selectChain,
+      innerJoin: () => selectChain,
+      where: async () => [
+        {
+          id: 'stale-subscription',
+          memberId: notification.recipientMemberId,
+          endpoint: 'https://fcm.googleapis.com/web-push/stale-browser',
+          p256dh: validP256dh,
+          auth: validAuth
+        },
+        {
+          id: 'active-subscription',
+          memberId: notification.recipientMemberId,
+          endpoint: 'https://fcm.googleapis.com/web-push/active-browser',
+          p256dh: validP256dh,
+          auth: validAuth
+        }
+      ]
+    };
+    const fakeDb = {
+      select: () => selectChain,
+      delete: () => ({ where: async () => undefined })
+    };
+    const attempted: string[] = [];
+
+    await deliverWebPushes(
+      fakeDb as never,
+      [notification],
+      testVapidConfig,
+      async (endpoint) => {
+        const value = endpoint.toString();
+        attempted.push(value.endsWith('stale-browser') ? 'stale' : 'active');
+        if (value.endsWith('stale-browser')) throw new TypeError('provider connection failed');
+        return new Response(null, { status: 201 });
+      },
+      async () => ({
+        method: 'POST',
+        headers: {
+          authorization: 'test',
+          ttl: '86400',
+          urgency: 'normal',
+          'content-encoding': 'aes128gcm',
+          'content-length': '1',
+          'content-type': 'application/octet-stream'
+        },
+        body: new Uint8Array([1])
+      })
+    );
+
+    expect(attempted).toEqual(['stale', 'active']);
   });
 
   it('cleans malformed stored subscriptions without attempting delivery', async () => {

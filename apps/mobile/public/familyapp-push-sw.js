@@ -1,3 +1,4 @@
+const WORKER_VERSION = '2026-09-27.2';
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const SAFE_ROUTES = [
   /^\/$/, /^\/family$/, /^\/chat\/family$/,
@@ -18,16 +19,32 @@ function safeRoute(value) {
   return typeof value === 'string' && SAFE_ROUTES.some((allowed) => allowed.test(value)) ? value : '/notifications';
 }
 
+// This worker has no fetch/cache behavior that can become incompatible with an
+// already-open app. Activate notification fixes immediately instead of leaving a
+// corrected worker waiting behind a long-lived desktop tab.
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener('push', (event) => {
   let payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
   const route = safeRoute(payload.route);
-  event.waitUntil(self.registration.showNotification(safeText(payload.title, 'FamilyApp', 140), {
-    body: safeText(payload.body, 'Open FamilyApp to see what is new.', 300),
-    icon: '/familyapp-icon-192.png',
-    badge: '/familyapp-maskable-512.png',
-    data: { route }
-  }));
+  event.waitUntil((async () => {
+    await self.registration.showNotification(safeText(payload.title, 'FamilyApp', 140), {
+      body: safeText(payload.body, 'Open FamilyApp to see what is new.', 300),
+      icon: '/familyapp-icon-192.png',
+      badge: '/familyapp-maskable-512.png',
+      data: { route, workerVersion: WORKER_VERSION }
+    });
+    // Visible only in service-worker developer tools; contains no message or
+    // subscription data and distinguishes an old worker from this fixed version.
+    console.info('FamilyApp Web Push displayed', { workerVersion: WORKER_VERSION });
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {
