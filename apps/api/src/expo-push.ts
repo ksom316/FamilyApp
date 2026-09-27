@@ -12,6 +12,8 @@ const EXPO_BATCH_SIZE = 100;
 const PUSH_NOTIFICATION_TYPES = new Set([
   'emergency_reported',
   'come_find_me_started',
+  'check_in_safe',
+  'check_in_arrived',
   'family_message',
   'private_message',
   'task_assigned',

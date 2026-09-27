@@ -1,6 +1,6 @@
 import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, AppState, Easing, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, Easing, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { radius, spacing, type Theme, type ThemeName } from '@familyapp/config';
@@ -34,6 +34,11 @@ import { getWeeklyRecap, WeeklyRecapApiError, type WeeklyRecap } from '../../lib
 
 const BRIEFING_POLL_INTERVAL_MS = 60_000;
 const MESSAGES_POLL_INTERVAL_MS = 30_000;
+
+// The family-photo card needs to be both animated (the ambient drift) and pressable (the
+// unobtrusive tap-to-manage/view interaction) on the very same element, so it's a single
+// animated Pressable rather than a Pressable wrapping (or wrapped by) an Animated.View.
+const AnimatedArtPressable = Animated.createAnimatedComponent(Pressable);
 
 function greetingForHour(hour: number) {
   if (hour < 12) return 'Good morning';
@@ -775,7 +780,9 @@ function HomeArtwork({ active, canManage, familyId, familyName, isWide, photoRev
   const reduced = useReducedMotion();
   const drift = useRef(new Animated.Value(0)).current;
   const [hasPhoto, setHasPhoto] = useState<boolean | null>(null);
-  const [showActions, setShowActions] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [hovering, setHovering] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const character: Record<ThemeName, { duration: number; rotate: number; x: number; y: number; scale: number }> = {
@@ -799,7 +806,7 @@ function HomeArtwork({ active, canManage, familyId, familyName, isWide, photoRev
     return () => loop.stop();
   }, [active, drift, reduced, spec.duration]);
 
-  useEffect(() => { setHasPhoto(null); setShowActions(false); }, [photoRevision]);
+  useEffect(() => { setHasPhoto(null); setMenuOpen(false); }, [photoRevision]);
   const photoLoaded = useCallback(() => setHasPhoto(true), []);
   const photoFailed = useCallback(() => setHasPhoto(false), []);
 
@@ -814,7 +821,6 @@ function HomeArtwork({ active, canManage, familyId, familyName, isWide, photoRev
     try {
       await uploadFamilyPhoto(familyId, { uri: asset.uri, name: asset.fileName ?? `family-${Date.now()}.jpg`, type: asset.mimeType ?? 'image/jpeg' });
       setHasPhoto(true);
-      setShowActions(false);
       onPhotoChanged();
     } catch (caught) {
       setError(caught instanceof FamilyPhotoApiError ? caught.message : 'The family photo could not be uploaded.');
@@ -823,72 +829,147 @@ function HomeArtwork({ active, canManage, familyId, familyName, isWide, photoRev
     }
   }
 
+  async function doRemove() {
+    setBusy(true);
+    setError(null);
+    try {
+      await removeFamilyPhoto(familyId);
+      setHasPhoto(false);
+      onPhotoChanged();
+    } catch (caught) {
+      setError(caught instanceof FamilyPhotoApiError ? caught.message : 'The family photo could not be removed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // react-native-web's Alert.alert is a no-op (it never shows anything and never invokes
+  // a button's onPress), so a confirmation built on it alone silently does nothing on web —
+  // Remove would never actually run. window.confirm is the established substitute the rest
+  // of the app already uses on web (see profile.tsx/calendar.tsx's own confirm helpers).
   function confirmRemove() {
+    if (Platform.OS === 'web') {
+      const windowConfirm = (globalThis as typeof globalThis & { confirm?: (text: string) => boolean }).confirm;
+      if (windowConfirm?.('Remove family photo? The colorful FamilyApp artwork will return.')) void doRemove();
+      return;
+    }
     Alert.alert('Remove family photo?', 'The colorful FamilyApp artwork will return.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => void (async () => {
-        setBusy(true);
-        setError(null);
-        try {
-          await removeFamilyPhoto(familyId);
-          setHasPhoto(false);
-          setShowActions(false);
-          onPhotoChanged();
-        } catch (caught) {
-          setError(caught instanceof FamilyPhotoApiError ? caught.message : 'The family photo could not be removed.');
-        } finally {
-          setBusy(false);
-        }
-      })() }
+      { text: 'Remove', style: 'destructive', onPress: () => void doRemove() }
     ]);
   }
 
+  function onCardPress() {
+    if (canManage) {
+      if (hasPhoto) setMenuOpen(true);
+      else void choosePhoto();
+    } else if (hasPhoto) {
+      setViewerOpen(true);
+    }
+  }
+
+  const interactive = canManage || Boolean(hasPhoto);
+  const cardAccessibilityLabel = canManage
+    ? (hasPhoto ? 'Family photo options' : 'Add family photo')
+    : 'View family photo';
+  // Always a small, visible hint on touch devices (there's no hover to reveal it with);
+  // on web, kept invisible until hover/focus so it never competes with the artwork.
+  const showHint = canManage && (Platform.OS !== 'web' || hovering);
+
   return (
-    <Animated.View style={[
-      styles.welcomeArt,
-      !isWide && styles.welcomeArtStacked,
-      isWide && styles.welcomeArtWide,
-      { backgroundColor: theme.accentSoft },
-      !reduced && {
-        opacity: drift.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }),
-        transform: [
-          { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [0, spec.x] }) },
-          { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [0, spec.y] }) },
-          { rotate: drift.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${spec.rotate}deg`] }) },
-          { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, spec.scale] }) }
-        ]
-      }
-    ]}>
-      <View style={[styles.artOrb, { backgroundColor: theme.primarySoft }]} />
-      <View style={[styles.artOrbSmall, { backgroundColor: theme.accent }]} />
-      <Avatar name={familyName} size={68} />
-      <AuthorizedImage
-        path={familyPhotoUrl(familyId, photoRevision)}
-        style={styles.familyPhoto}
-        transparentFallback
-        onLoad={photoLoaded}
-        onError={photoFailed}
-      />
-      {hasPhoto ? <View style={styles.familyPhotoShade} pointerEvents="none" /> : null}
-      {hasPhoto ? <AppText variant="label" style={styles.familyPhotoName} numberOfLines={1}>{familyName}</AppText> : null}
-      {hasPhoto === null ? <ActivityIndicator color={theme.primary} style={styles.familyPhotoLoading} /> : null}
-      {canManage ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={hasPhoto ? 'Manage family photo' : 'Add family photo'}
-          disabled={busy}
-          onPress={() => hasPhoto ? setShowActions((current) => !current) : void choosePhoto()}
-          style={[styles.familyPhotoEdit, !hasPhoto && styles.familyPhotoAdd, { backgroundColor: theme.surface }]}
-        ><AppText variant="label">{hasPhoto ? '📷' : '📷 Add family photo'}</AppText></Pressable>
-      ) : null}
-      {showActions && hasPhoto ? (
-        <View style={[styles.familyPhotoActions, { backgroundColor: theme.surface }]}>
-          <Button label="Change" variant="quiet" disabled={busy} onPress={() => void choosePhoto()} />
-          <Button label="Remove" variant="quiet" disabled={busy} onPress={confirmRemove} />
+    <>
+      <AnimatedArtPressable
+        accessibilityRole={interactive ? 'button' : undefined}
+        accessibilityLabel={interactive ? cardAccessibilityLabel : undefined}
+        disabled={!interactive || busy}
+        onPress={onCardPress}
+        onHoverIn={() => setHovering(true)}
+        onHoverOut={() => setHovering(false)}
+        style={[
+          styles.welcomeArt,
+          !isWide && styles.welcomeArtStacked,
+          isWide && styles.welcomeArtWide,
+          { backgroundColor: theme.accentSoft },
+          !reduced && {
+            opacity: drift.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }),
+            transform: [
+              { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [0, spec.x] }) },
+              { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [0, spec.y] }) },
+              { rotate: drift.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${spec.rotate}deg`] }) },
+              { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, spec.scale] }) }
+            ]
+          }
+        ]}
+      >
+        <View style={[styles.artOrb, { backgroundColor: theme.primarySoft }]} />
+        <View style={[styles.artOrbSmall, { backgroundColor: theme.accent }]} />
+        <Avatar name={familyName} size={68} />
+        <AuthorizedImage
+          path={familyPhotoUrl(familyId, photoRevision)}
+          style={styles.familyPhoto}
+          transparentFallback
+          onLoad={photoLoaded}
+          onError={photoFailed}
+        />
+        {hasPhoto ? <View style={styles.familyPhotoShade} pointerEvents="none" /> : null}
+        {hasPhoto ? <AppText variant="label" style={styles.familyPhotoName} numberOfLines={1}>{familyName}</AppText> : null}
+        {hasPhoto === null ? <ActivityIndicator color={theme.primary} style={styles.familyPhotoLoading} /> : null}
+        {showHint ? (
+          <View style={[styles.familyPhotoHint, { backgroundColor: theme.surface }]}>
+            <AppText variant="label">📷</AppText>
+          </View>
+        ) : null}
+        {error ? <View style={[styles.familyPhotoError, { backgroundColor: theme.dangerSoft }]}><AppText variant="caption" tone="danger" numberOfLines={2}>{error}</AppText></View> : null}
+      </AnimatedArtPressable>
+
+      <Modal animationType="fade" onRequestClose={() => setMenuOpen(false)} transparent visible={menuOpen}>
+        <Pressable accessibilityLabel="Close menu" style={styles.menuBackdrop} onPress={() => setMenuOpen(false)}>
+          <View style={[styles.menuSheet, { backgroundColor: theme.surface }]}>
+            <AppText variant="label" style={styles.menuTitle}>Family photo</AppText>
+            <MenuRow label="View full photo" onPress={() => { setMenuOpen(false); setViewerOpen(true); }} />
+            <MenuRow label="Change photo" onPress={() => { setMenuOpen(false); void choosePhoto(); }} />
+            <MenuRow label="Remove photo" tone="danger" onPress={() => { setMenuOpen(false); confirmRemove(); }} />
+            <MenuRow label="Cancel" onPress={() => setMenuOpen(false)} />
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setViewerOpen(false)}
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        transparent
+        visible={viewerOpen}
+      >
+        <View style={styles.viewerBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close full-screen photo"
+            hitSlop={8}
+            onPress={() => setViewerOpen(false)}
+            style={styles.viewerClose}
+          >
+            <AppText style={styles.viewerCloseLabel}>×</AppText>
+          </Pressable>
+          <View style={styles.viewerImageWrap}>
+            <AuthorizedImage
+              path={familyPhotoUrl(familyId, photoRevision)}
+              resizeMode="contain"
+              style={styles.viewerImage}
+            />
+          </View>
         </View>
-      ) : null}
-      {error ? <View style={[styles.familyPhotoError, { backgroundColor: theme.dangerSoft }]}><AppText variant="caption" tone="danger" numberOfLines={2}>{error}</AppText></View> : null}
-    </Animated.View>
+      </Modal>
+    </>
+  );
+}
+
+function MenuRow({ label, tone, onPress }: { label: string; tone?: 'danger'; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={styles.menuRow}>
+      <AppText variant="body" tone={tone}>{label}</AppText>
+    </Pressable>
   );
 }
 
@@ -910,10 +991,19 @@ const styles = StyleSheet.create({
   familyPhotoShade: { backgroundColor: 'rgba(10, 12, 20, 0.25)', bottom: 0, height: 58, left: 0, position: 'absolute', right: 0 },
   familyPhotoName: { bottom: spacing.md, color: '#FFFFFF', left: spacing.md, maxWidth: '65%', position: 'absolute' },
   familyPhotoLoading: { left: spacing.sm, position: 'absolute', top: spacing.sm },
-  familyPhotoEdit: { alignItems: 'center', borderRadius: radius.pill, height: 38, justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm, width: 38 },
-  familyPhotoAdd: { paddingHorizontal: spacing.md, width: 'auto' },
-  familyPhotoActions: { borderRadius: radius.md, flexDirection: 'row', paddingHorizontal: spacing.xs, position: 'absolute', right: spacing.sm, top: 54 },
+  // A small, quiet hint rather than a permanent labeled button — on web it only shows on
+  // hover/focus (see `showHint`), so it never competes with the artwork or the photo.
+  familyPhotoHint: { alignItems: 'center', borderRadius: radius.pill, height: 34, justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm, width: 34 },
   familyPhotoError: { borderRadius: radius.sm, bottom: spacing.sm, left: spacing.sm, maxWidth: '72%', padding: spacing.xs, position: 'absolute' },
+  menuBackdrop: { alignItems: 'center', backgroundColor: 'rgba(10, 12, 20, 0.45)', flex: 1, justifyContent: 'flex-end' },
+  menuSheet: { borderRadius: radius.lg, margin: spacing.md, overflow: 'hidden', paddingBottom: spacing.sm, paddingTop: spacing.sm, width: '100%', maxWidth: 420 },
+  menuTitle: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  menuRow: { minHeight: 48, justifyContent: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  viewerBackdrop: { backgroundColor: 'rgba(0, 0, 0, 0.96)', flex: 1 },
+  viewerClose: { alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.16)', borderColor: 'rgba(255, 255, 255, 0.45)', borderRadius: radius.pill, borderWidth: 1, height: 48, justifyContent: 'center', position: 'absolute', right: spacing.lg, top: spacing.lg, width: 48, zIndex: 1 },
+  viewerCloseLabel: { color: '#FFFFFF', fontSize: 32, lineHeight: 34 },
+  viewerImageWrap: { flex: 1, paddingBottom: spacing.md, paddingHorizontal: spacing.md, paddingTop: 72 },
+  viewerImage: { height: '100%', width: '100%' },
   artOrb: { borderRadius: 100, height: 160, left: -35, position: 'absolute', top: 85, width: 160 },
   artOrbSmall: { borderRadius: 40, height: 54, position: 'absolute', right: 32, top: 26, width: 54 },
   emergencyBanner: { alignItems: 'center', borderWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', marginTop: spacing.lg, padding: spacing.lg },

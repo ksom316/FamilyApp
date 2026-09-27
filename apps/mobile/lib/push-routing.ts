@@ -6,6 +6,7 @@ const SAFE_ROUTES = [
   new RegExp(`^/\\(family\\)/private-chat/${UUID}$`, 'i'),
   new RegExp(`^/\\(family\\)/emergency/${UUID}$`, 'i'),
   /^\/\(family\)\/location$/,
+  /^\/\(family\)\/check-ins$/,
   new RegExp(`^/\\(family\\)/tasks/${UUID}$`, 'i'),
   /^\/\(family\)\/plans$/,
   /^\/\(family\)\/calendar$/,

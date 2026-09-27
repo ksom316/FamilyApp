@@ -95,3 +95,39 @@ describe('chat notification recipient selection', () => {
     expect(recipientsExcluding([senderId, recipientId, recipientId], senderId)).toEqual([recipientId]);
   });
 });
+
+describe.each([
+  ['I\'m Safe', 'check_in_safe'],
+  ['I\'ve Arrived', 'check_in_arrived']
+] as const)('%s delivery idempotency', (_label, type) => {
+  beforeEach(() => {
+    delivery.native.mockClear();
+    delivery.web.mockClear();
+  });
+
+  it('delivers distinct check-ins through both channels but deduplicates the same event', async () => {
+    const { db, rows } = notificationDb();
+    const makeInput = (eventId: string): NotificationInput => ({
+      familyId,
+      recipientMemberId: recipientId,
+      actorMemberId: senderId,
+      type,
+      title: 'FamilyApp',
+      message: type === 'check_in_safe' ? 'Kwaku marked themselves as safe.' : 'Kwaku has arrived safely.',
+      entityType: 'family_check_in',
+      entityId: eventId,
+      route: '/(family)/check-ins',
+      dedupeKey: `${type}:${eventId}:${recipientId}`
+    });
+    const eventA = '77777777-7777-4777-8777-777777777771';
+    const eventB = '77777777-7777-4777-8777-777777777772';
+
+    await createNotifications(db as never, [makeInput(eventA)]);
+    await createNotifications(db as never, [makeInput(eventB)]);
+    await createNotifications(db as never, [makeInput(eventB)]);
+
+    expect(rows).toHaveLength(2);
+    expect(delivery.native.mock.calls.flatMap((call) => call[1])).toHaveLength(2);
+    expect(delivery.web.mock.calls.flatMap((call) => call[1])).toHaveLength(2);
+  });
+});

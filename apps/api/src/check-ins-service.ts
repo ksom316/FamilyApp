@@ -4,6 +4,13 @@ import type { Database } from '@familyapp/db';
 import { familyCheckIns, familyMembers, users } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
+import { normalizeNotificationText } from './notification-content';
+import {
+  createNotifications,
+  eventNotificationDedupeKey,
+  familyMemberIds,
+  recipientsExcluding
+} from './notifications-service';
 
 export const CHECK_IN_STATUSES = ['safe', 'arrived'] as const;
 export type CheckInStatus = (typeof CHECK_IN_STATUSES)[number];
@@ -74,6 +81,16 @@ export async function listRecentCheckIns(db: Database, userId: string, familyId:
 
 type CreateCheckInInput = { status: unknown; message?: unknown };
 
+export function checkInNotificationContent(displayName: string, status: CheckInStatus) {
+  const memberName = normalizeNotificationText(displayName, 100) || 'A family member';
+  return {
+    title: 'FamilyApp',
+    body: status === 'safe'
+      ? `${memberName} marked themselves as safe.`
+      : `${memberName} has arrived safely.`
+  };
+}
+
 // Actor identity always comes from the authenticated session's own membership row — a
 // member can only ever post a check-in as themselves, never on someone else's behalf.
 export async function createCheckIn(db: Database, userId: string, familyId: string, input: CreateCheckInInput) {
@@ -88,5 +105,22 @@ export async function createCheckIn(db: Database, userId: string, familyId: stri
 
   const [checkIn] = await selectCheckIns(db).where(eq(familyCheckIns.id, inserted.id)).limit(1);
   if (!checkIn) throw new Error('Check-in could not be loaded after creating.');
+
+  const notificationType = status === 'safe' ? 'check_in_safe' : 'check_in_arrived';
+  const content = checkInNotificationContent(checkIn.member.displayName, status);
+  const recipients = recipientsExcluding(await familyMemberIds(db, familyId), membership.id);
+  await createNotifications(db, recipients.map((recipientMemberId) => ({
+    familyId,
+    recipientMemberId,
+    actorMemberId: membership.id,
+    type: notificationType,
+    title: content.title,
+    message: content.body,
+    entityType: 'family_check_in',
+    entityId: checkIn.id,
+    route: '/(family)/check-ins',
+    dedupeKey: eventNotificationDedupeKey(notificationType, checkIn.id, recipientMemberId)
+  })));
+
   return checkIn;
 }

@@ -19,6 +19,7 @@ const SAFE_WEB_ROUTES = [
   new RegExp(`^/private-chat/${UUID}$`, 'i'),
   new RegExp(`^/emergency/${UUID}$`, 'i'),
   /^\/location$/,
+  /^\/check-ins$/,
   new RegExp(`^/tasks/${UUID}$`, 'i'),
   /^\/plans$/,
   /^\/calendar$/,

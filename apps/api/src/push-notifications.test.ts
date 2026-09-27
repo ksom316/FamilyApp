@@ -144,6 +144,29 @@ describe('safe push payload construction', () => {
     }
   });
 
+  it('delivers privacy-safe safety check-ins through native and Web Push', () => {
+    for (const [type, body] of [
+      ['check_in_safe', 'Kwaku marked themselves as safe.'],
+      ['check_in_arrived', 'Kwaku has arrived safely.']
+    ] as const) {
+      const safetyNotification = {
+        ...notification,
+        type,
+        title: 'FamilyApp',
+        message: body,
+        entityType: 'family_check_in',
+        route: '/(family)/check-ins'
+      };
+      const native = buildSafePushMessage(safetyNotification, 'ExpoPushToken[abc_123-XYZ]');
+      const web = buildSafeWebPushPayload(safetyNotification);
+      expect(shouldSendNativePush(type)).toBe(true);
+      expect(native).toMatchObject({ title: 'FamilyApp', body });
+      expect(native?.data.route).toBe('/(family)/check-ins');
+      expect(web).toMatchObject({ title: 'FamilyApp', body, route: '/check-ins' });
+      expect(JSON.stringify({ native, web })).not.toMatch(/latitude|longitude|coordinates|maps?\./i);
+    }
+  });
+
   it('uses sender and family context with one sanitized preview for native and Web Push', () => {
     const content = familyMessageNotificationContent(
       ' Kwaku ',
@@ -317,14 +340,17 @@ describe('safe push payload construction', () => {
     await dispatch('activate');
     await dispatch('push', { title: 'Ama', body: 'Message A', route: '/chat/family' });
     await dispatch('push', { title: 'Ama', body: 'Message B', route: '/chat/family' });
+    await dispatch('push', { title: 'FamilyApp', body: 'Kwaku has arrived safely.', route: '/check-ins' });
 
     expect(skipWaiting).toHaveBeenCalledOnce();
     expect(claim).toHaveBeenCalledOnce();
-    expect(displayed).toHaveLength(2);
+    expect(displayed).toHaveLength(3);
     expect(displayed.map(({ title, options }) => ({ title, body: options.body }))).toEqual([
       { title: 'Ama', body: 'Message A' },
-      { title: 'Ama', body: 'Message B' }
+      { title: 'Ama', body: 'Message B' },
+      { title: 'FamilyApp', body: 'Kwaku has arrived safely.' }
     ]);
+    expect(displayed[2]?.options.data).toMatchObject({ route: '/check-ins', workerVersion: '2026-09-27.3' });
     for (const { options } of displayed) {
       expect(options).not.toHaveProperty('tag');
       expect(options).not.toHaveProperty('renotify');

@@ -1,10 +1,10 @@
-const WORKER_VERSION = '2026-09-27.2';
+const WORKER_VERSION = '2026-09-27.3';
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const SAFE_ROUTES = [
   /^\/$/, /^\/family$/, /^\/chat\/family$/,
   new RegExp(`^/private-chat/${UUID}$`, 'i'),
   new RegExp(`^/emergency/${UUID}$`, 'i'),
-  /^\/location$/,
+  /^\/location$/, /^\/check-ins$/,
   new RegExp(`^/tasks/${UUID}$`, 'i'),
   /^\/plans$/, /^\/calendar$/,
   new RegExp(`^/polls/${UUID}$`, 'i'),

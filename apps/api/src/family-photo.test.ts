@@ -72,6 +72,18 @@ describe('private family photo lifecycle', () => {
     expect(familyPhotoObjectKey(OTHER_FAMILY_ID)).not.toBe(familyPhotoObjectKey(FAMILY_ID));
   });
 
+  it('surfaces a storage_error instead of a false success when the delete itself fails', async () => {
+    const storage = fakeStorage();
+    storage.delete.mockRejectedValueOnce(new Error('Supabase Storage delete failed with status 500.'));
+    await expect(removeFamilyPhoto(fakeDb('owner') as never, USER_ID, FAMILY_ID, storage))
+      .rejects.toMatchObject({ code: 'storage_error', status: 502 });
+  });
+
+  it('rejects removal when object storage is not configured, without pretending it succeeded', async () => {
+    await expect(removeFamilyPhoto(fakeDb('owner') as never, USER_ID, FAMILY_ID, undefined))
+      .rejects.toMatchObject({ code: 'storage_unavailable', status: 503 });
+  });
+
   it('rejects empty, oversized, and non-image files', async () => {
     const db = fakeDb('owner') as never;
     const storage = fakeStorage();
