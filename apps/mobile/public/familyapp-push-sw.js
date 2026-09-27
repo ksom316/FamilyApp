@@ -26,7 +26,6 @@ self.addEventListener('push', (event) => {
     body: safeText(payload.body, 'Open FamilyApp to see what is new.', 300),
     icon: '/familyapp-icon-192.png',
     badge: '/familyapp-maskable-512.png',
-    tag: safeText(payload.tag, 'familyapp-notification', 100),
     data: { route }
   }));
 });

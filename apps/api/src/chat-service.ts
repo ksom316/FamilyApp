@@ -4,7 +4,12 @@ import type { Database } from '@familyapp/db';
 import { familyMembers, familyMessages, users } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
-import { createNotifications, familyMemberIds, recipientsExcluding } from './notifications-service';
+import {
+  createNotifications,
+  eventNotificationDedupeKey,
+  familyMemberIds,
+  recipientsExcluding
+} from './notifications-service';
 
 export const MAX_MESSAGE_LENGTH = 2000;
 export const MESSAGE_PAGE_SIZE = 50;
@@ -32,6 +37,10 @@ export function readMessageText(value: unknown) {
     );
   }
   return text;
+}
+
+export function familyMessageNotificationDedupeKey(messageId: string, recipientMemberId: string) {
+  return eventNotificationDedupeKey('family_message', messageId, recipientMemberId);
 }
 
 const messageSelection = {
@@ -117,7 +126,8 @@ export async function createFamilyMessage(
     message: 'Open FamilyApp to read the family chat.',
     entityType: 'family_message',
     entityId: message.id,
-    route: '/(family)/chat/family'
+    route: '/(family)/chat/family',
+    dedupeKey: familyMessageNotificationDedupeKey(message.id, recipientMemberId)
   })));
   return message;
 }

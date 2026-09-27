@@ -37,11 +37,16 @@ export type NotificationInput = {
   entityId?: string | null;
   route?: string | null;
   // A deterministic, globally-unique key (see the schema comment on family_notifications)
-  // that lets a status/time-derived notification be regenerated safely on every sweep —
-  // the database silently drops the insert if this key already exists. Leave unset for
-  // ordinary one-off, mutation-triggered notifications.
+  // that lets a notification event be processed again safely — the database silently
+  // drops the insert if this key already exists. Leave unset only when the caller has no
+  // stable event identity.
   dedupeKey?: string | null;
 };
+
+/** A retry-safe identity for one event notification addressed to one recipient. */
+export function eventNotificationDedupeKey(type: string, eventId: string, recipientMemberId: string) {
+  return `${type}:${eventId}:${recipientMemberId}`;
+}
 
 // A small reusable server-side helper — every feature that wants to notify family members
 // calls this after its own mutation has already committed successfully. It deliberately

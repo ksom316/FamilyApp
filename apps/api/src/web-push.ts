@@ -32,7 +32,6 @@ export type SafeWebPushPayload = {
   title: string;
   body: string;
   route: string;
-  tag: string;
 };
 
 function toWebRoute(route: string) {
@@ -52,8 +51,7 @@ export function buildSafeWebPushPayload(notification: PushNotificationRecord): S
     kind: 'familyapp_notification',
     title: content.title,
     body: content.body,
-    route,
-    tag: `familyapp-${notification.type}`
+    route
   };
 }
 
@@ -134,7 +132,12 @@ export async function deliverWebPushes(
         try {
           const request = await build({
             data: JSON.stringify(payload),
-            options: { ttl: 86_400, urgency: payload.tag.includes('emergency_reported') || payload.tag.includes('come_find_me_started') ? 'high' : 'normal' }
+            options: {
+              ttl: 86_400,
+              urgency: notification.type === 'emergency_reported' || notification.type === 'come_find_me_started'
+                ? 'high'
+                : 'normal'
+            }
           }, {
             endpoint: subscription.endpoint,
             expirationTime: null,

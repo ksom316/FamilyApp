@@ -12,11 +12,15 @@ import {
 
 import { MAX_MESSAGE_LENGTH, readMessageText } from './chat-service';
 import { requireFamilyMembership } from './family-service';
-import { createNotifications } from './notifications-service';
+import { createNotifications, eventNotificationDedupeKey } from './notifications-service';
 
 export { MAX_MESSAGE_LENGTH };
 export const PRIVATE_MESSAGE_PAGE_SIZE = 50;
 const PRIVATE_INBOX_PAGE_SIZE = 100;
+
+export function privateMessageNotificationDedupeKey(messageId: string, recipientMemberId: string) {
+  return eventNotificationDedupeKey('private_message', messageId, recipientMemberId);
+}
 
 export type PrivateChatErrorCode =
   | 'invalid_conversation'
@@ -332,7 +336,8 @@ export async function createPrivateMessage(
     message: 'Open FamilyApp to read your private conversation.',
     entityType: 'private_conversation',
     entityId: conversationId,
-    route: `/(family)/private-chat/${conversationId}`
+    route: `/(family)/private-chat/${conversationId}`,
+    dedupeKey: privateMessageNotificationDedupeKey(message.id, authorized.recipient.memberId)
   }]);
   return message;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import { markDepartureNotificationRead, recipientsExcluding } from './notifications-service';
 import { buildSafePushMessage, shouldSendNativePush } from './expo-push';
@@ -126,6 +127,17 @@ describe('safe push payload construction', () => {
     expect(buildSafePushMessage({ ...notification, type: 'shopping_list_created' }, 'ExpoPushToken[abc]')).toBeNull();
   });
 
+  it('keeps family and private messages eligible for native and Web Push', () => {
+    for (const type of ['family_message', 'private_message']) {
+      const messageNotification = { ...notification, type, route: type === 'family_message'
+        ? '/(family)/chat/family'
+        : '/(family)/private-chat/44444444-4444-4444-8444-444444444444' };
+      expect(shouldSendNativePush(type)).toBe(true);
+      expect(buildSafePushMessage(messageNotification, 'ExpoPushToken[abc_123-XYZ]')).not.toBeNull();
+      expect(buildSafeWebPushPayload(messageNotification)).not.toBeNull();
+    }
+  });
+
   it('delivers a member-left notification through the same native push pipeline', () => {
     expect(shouldSendNativePush('member_left')).toBe(true);
     const message = buildSafePushMessage({
@@ -179,8 +191,17 @@ describe('safe push payload construction', () => {
     expect(payload?.body).not.toContain('Sensitive details');
     expect(payload).not.toHaveProperty('familyId');
     expect(payload).not.toHaveProperty('entityId');
+    expect(payload).not.toHaveProperty('tag');
     expect(isSafeWebPushRoute('https://example.com')).toBe(false);
     expect(buildSafeWebPushPayload({ ...notification, route: 'https://example.com' })).toBeNull();
+  });
+
+  it('does not collapse distinct pushes under one service-worker notification tag', () => {
+    const serviceWorker = readFileSync(
+      new URL('../../mobile/public/familyapp-push-sw.js', import.meta.url),
+      'utf8'
+    );
+    expect(serviceWorker).not.toMatch(/\btag\s*:/);
   });
 
   it('cleans malformed stored subscriptions without attempting delivery', async () => {
