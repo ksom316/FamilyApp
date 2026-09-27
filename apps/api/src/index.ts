@@ -43,6 +43,7 @@ import {
   leaveFamily,
   listFamilyMembers,
   listFamilyMemberships,
+  removeFamilyMember,
   transferFamilyOwnership
 } from './family-service';
 import { AccountServiceError, deleteAccount } from './account-service';
@@ -127,7 +128,13 @@ import {
   setSavedMenuMeal,
   updateSavedMenu
 } from './saved-menus-service';
-import { listNotifications, markAllNotificationsRead, markNotificationRead, NotificationServiceError } from './notifications-service';
+import {
+  listNotifications,
+  markAllNotificationsRead,
+  markDepartureNotificationRead,
+  markNotificationRead,
+  NotificationServiceError
+} from './notifications-service';
 import { runAllNotificationSweeps } from './notification-sweep';
 import { createObjectStorage } from './object-storage';
 import {
@@ -383,7 +390,7 @@ app.delete('/me', sessionMiddleware, async (c) => {
     return c.body(null, 204);
   } catch (error) {
     if (error instanceof AccountServiceError) return c.json({ error: error.message, code: error.code }, error.status as 409);
-    if (error instanceof FamilyServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 409 | 410);
+    if (error instanceof FamilyServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 409 | 410 | 503);
     throw error;
   }
 });
@@ -419,11 +426,35 @@ app.post('/families/:familyId/leave', sessionMiddleware, async (c) => {
   const session = c.get('session');
   if (!session) return c.json({ error: 'Unauthorized' }, 401);
   try {
-    const result = await leaveFamily(createDatabase(c.env.DATABASE_URL), session.user.id, c.req.param('familyId'));
+    const result = await leaveFamily(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      createObjectStorage(c.env)
+    );
     return c.json(result);
   } catch (error) {
     if (error instanceof FamilyServiceError) {
-      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409 | 410);
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409 | 410 | 503);
+    }
+    throw error;
+  }
+});
+
+app.delete('/families/:familyId/members/:memberId', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await removeFamilyMember(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('familyId'),
+      c.req.param('memberId')
+    );
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof FamilyServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
     }
     throw error;
   }
@@ -1888,6 +1919,24 @@ app.patch('/families/:familyId/notifications/:notificationId/read', sessionMiddl
     return c.body(null, 204);
   } catch (error) {
     if (error instanceof FamilyServiceError || error instanceof NotificationServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    throw error;
+  }
+});
+
+app.patch('/me/departure-notifications/:notificationId/read', sessionMiddleware, async (c) => {
+  const session = c.get('session');
+  if (!session) return c.json({ error: 'Unauthorized' }, 401);
+  try {
+    await markDepartureNotificationRead(
+      createDatabase(c.env.DATABASE_URL),
+      session.user.id,
+      c.req.param('notificationId')
+    );
+    return c.body(null, 204);
+  } catch (error) {
+    if (error instanceof NotificationServiceError) {
+      return c.json({ error: error.message, code: error.code }, error.status as 400 | 404);
+    }
     throw error;
   }
 });

@@ -28,6 +28,6 @@ const styles = StyleSheet.create({
   base: { alignItems: 'center', borderRadius: radius.md, justifyContent: 'center', minHeight: 52, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   fullWidth: { alignSelf: 'stretch', width: '100%' },
   quiet: { minHeight: 44, paddingHorizontal: spacing.sm },
-  label: { fontSize: typography.size.md, fontWeight: typography.weight.bold, lineHeight: typography.lineHeight.md },
+  label: { flexShrink: 1, fontSize: typography.size.md, fontWeight: typography.weight.bold, lineHeight: typography.lineHeight.md, textAlign: 'center' },
   disabled: { opacity: 0.48 },
 });

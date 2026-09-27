@@ -1,5 +1,7 @@
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const SAFE_ROUTES = [
+  /^\/$/,
+  /^\/\(family\)\/family$/,
   /^\/\(family\)\/chat\/family$/,
   new RegExp(`^/\\(family\\)/private-chat/${UUID}$`, 'i'),
   new RegExp(`^/\\(family\\)/emergency/${UUID}$`, 'i'),
@@ -15,6 +17,7 @@ export type PushDestination = {
   familyId: string;
   notificationId: string;
   route: string;
+  type: string | null;
 };
 
 function isUuid(value: unknown): value is string {
@@ -25,7 +28,12 @@ export function readPushDestination(data: Record<string, unknown> | null | undef
   if (!data || data.kind !== 'familyapp_notification' || !isUuid(data.familyId) || !isUuid(data.notificationId)) return null;
   const route = data.route;
   if (typeof route !== 'string' || !SAFE_ROUTES.some((allowedRoute) => allowedRoute.test(route))) return null;
-  return { familyId: data.familyId, notificationId: data.notificationId, route };
+  return {
+    familyId: data.familyId,
+    notificationId: data.notificationId,
+    route,
+    type: typeof data.type === 'string' ? data.type : null
+  };
 }
 
 export function routesMatch(pathname: string, route: string) {

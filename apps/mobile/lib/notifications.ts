@@ -48,6 +48,11 @@ export async function markNotificationRead(familyId: string, notificationId: str
   if (!response.ok) await readResponse(response);
 }
 
+export async function markDepartureNotificationRead(notificationId: string) {
+  const response = await apiFetch(`/me/departure-notifications/${encodeURIComponent(notificationId)}/read`, { method: 'PATCH' });
+  if (!response.ok) await readResponse(response);
+}
+
 export async function markAllNotificationsRead(familyId: string) {
   const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/notifications/read-all`, { method: 'POST' });
   if (!response.ok) await readResponse(response);

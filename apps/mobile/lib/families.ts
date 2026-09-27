@@ -75,6 +75,13 @@ export async function leaveFamily(familyId: string) {
   return (await readResponse<{ familyDeleted: boolean }>(response));
 }
 
+export async function removeFamilyMember(familyId: string, memberId: string) {
+  const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/members/${encodeURIComponent(memberId)}`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) await readResponse(response);
+}
+
 export async function transferFamilyOwnership(familyId: string, newOwnerMemberId: string) {
   const response = await apiFetch(`/families/${encodeURIComponent(familyId)}/ownership/transfer`, {
     method: 'POST',

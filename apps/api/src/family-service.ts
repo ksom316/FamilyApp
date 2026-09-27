@@ -11,6 +11,8 @@ import {
   users
 } from '@familyapp/db/schema';
 
+import type { ObjectStorage } from './object-storage';
+
 export type FamilyErrorCode =
   | 'invalid_name'
   | 'invalid_family_id'
@@ -23,6 +25,8 @@ export type FamilyErrorCode =
   | 'invalid_invitation_role'
   | 'invalid_member'
   | 'member_not_found'
+  | 'cannot_remove_self'
+  | 'storage_unavailable'
   | 'owner_must_transfer';
 
 export class FamilyServiceError extends Error {
@@ -148,6 +152,12 @@ export function shouldTeardownFamily(otherActiveMemberCount: number) {
   return otherActiveMemberCount === 0;
 }
 
+export function canRemoveFamilyMember(actorRole: string, targetRole: string) {
+  if (targetRole === 'owner') return false;
+  if (actorRole === 'owner') return targetRole === 'guardian' || targetRole === 'member';
+  return actorRole === 'guardian' && targetRole === 'member';
+}
+
 async function countOtherActiveMembers(db: Database, familyId: string, excludeMembershipId: string) {
   const rows = await db
     .select({ id: familyMembers.id })
@@ -194,10 +204,55 @@ export async function transferFamilyOwnership(db: Database, userId: string, fami
 
 export type LeaveFamilyResult = { familyDeleted: boolean };
 
+async function deactivateMembership(db: Database, familyId: string, membershipId: string, leftAt: Date) {
+  const membershipUpdate = db
+    .update(familyMembers)
+    .set({ leftAt })
+    .where(and(eq(familyMembers.id, membershipId), eq(familyMembers.familyId, familyId), isNull(familyMembers.leftAt)))
+    .returning({ id: familyMembers.id });
+  const householdCleanup = db.delete(householdMembers).where(and(
+    eq(householdMembers.familyId, familyId),
+    eq(householdMembers.familyMemberId, membershipId)
+  ));
+  const locationCleanup = db.delete(familyLocationShares).where(eq(familyLocationShares.memberId, membershipId));
+  const findMeCleanup = db.delete(familyFindMeRequests).where(or(
+    eq(familyFindMeRequests.requesterMemberId, membershipId),
+    eq(familyFindMeRequests.recipientMemberId, membershipId)
+  ));
+  const [updated] = await db.batch([membershipUpdate, householdCleanup, locationCleanup, findMeCleanup] as const);
+  return Boolean(updated[0]);
+}
+
+async function deleteFinalMemberFamily(db: Database, familyId: string, storage: ObjectStorage | undefined) {
+  if (!storage) {
+    throw new FamilyServiceError(
+      'storage_unavailable',
+      'Family media cleanup is temporarily unavailable. The family was not deleted; please try again.',
+      503
+    );
+  }
+  try {
+    await storage.deletePrefix(`families/${familyId}/`);
+  } catch (error) {
+    console.error('Family media cleanup failed before final family deletion.', { familyId, error });
+    throw new FamilyServiceError(
+      'storage_unavailable',
+      'Family media cleanup is temporarily unavailable. The family was not deleted; please try again.',
+      503
+    );
+  }
+  await db.delete(families).where(eq(families.id, familyId));
+}
+
 // The one function both "Leave Family" and "Delete Account" (once per active membership)
 // funnel through, so the owner-safety rule and the notification are enforced identically
 // either way.
-export async function leaveFamily(db: Database, userId: string, familyId: string): Promise<LeaveFamilyResult> {
+export async function leaveFamily(
+  db: Database,
+  userId: string,
+  familyId: string,
+  storage?: ObjectStorage
+): Promise<LeaveFamilyResult> {
   const membership = await requireFamilyMembership(db, userId, familyId);
   const others = await countOtherActiveMembers(db, familyId, membership.id);
 
@@ -214,7 +269,7 @@ export async function leaveFamily(db: Database, userId: string, familyId: string
   // table's own familyId FK is ON DELETE CASCADE) without ever touching the RESTRICT-guarded
   // creator/sender/assignee columns directly — those rows disappear in the same cascade.
   if (shouldTeardownFamily(others.length)) {
-    await db.delete(families).where(eq(families.id, familyId));
+    await deleteFinalMemberFamily(db, familyId, storage);
     return { familyDeleted: true };
   }
 
@@ -225,18 +280,8 @@ export async function leaveFamily(db: Database, userId: string, familyId: string
     .where(eq(familyMembers.id, membership.id))
     .limit(1);
 
-  await db.update(familyMembers).set({ leftAt: new Date() }).where(eq(familyMembers.id, membership.id));
-  await db.delete(householdMembers).where(and(
-    eq(householdMembers.familyId, familyId),
-    eq(householdMembers.familyMemberId, membership.id)
-  ));
-  // Live/real-time state (unlike historical content) shouldn't linger and look "current"
-  // to other members once someone has left.
-  await db.delete(familyLocationShares).where(eq(familyLocationShares.memberId, membership.id));
-  await db.delete(familyFindMeRequests).where(or(
-    eq(familyFindMeRequests.requesterMemberId, membership.id),
-    eq(familyFindMeRequests.recipientMemberId, membership.id)
-  ));
+  const departed = await deactivateMembership(db, familyId, membership.id, new Date());
+  if (!departed) throw new FamilyServiceError('not_a_member', 'You are not a member of this family.', 403);
 
   // Dynamic import avoids a static circular import (notifications-service.ts already
   // imports requireFamilyMembership from this file) — same pattern notification-sweep.ts's
@@ -253,6 +298,78 @@ export async function leaveFamily(db: Database, userId: string, familyId: string
   })));
 
   return { familyDeleted: false };
+}
+
+export async function removeFamilyMember(
+  db: Database,
+  actorUserId: string,
+  familyId: string,
+  targetMemberId: string
+) {
+  assertMemberId(targetMemberId);
+  const actor = await requireFamilyMembership(db, actorUserId, familyId);
+  if (actor.id === targetMemberId) {
+    throw new FamilyServiceError('cannot_remove_self', 'Use Leave Family to remove yourself.', 409);
+  }
+
+  const [target] = await db
+    .select({
+      id: familyMembers.id,
+      role: familyMembers.role,
+      displayName: users.name,
+      familyName: families.name
+    })
+    .from(familyMembers)
+    .innerJoin(users, eq(familyMembers.userId, users.id))
+    .innerJoin(families, eq(familyMembers.familyId, families.id))
+    .where(and(
+      eq(familyMembers.id, targetMemberId),
+      eq(familyMembers.familyId, familyId),
+      isNull(familyMembers.leftAt)
+    ))
+    .limit(1);
+  if (!target) {
+    throw new FamilyServiceError('member_not_found', 'That person is not an active member of this family.', 404);
+  }
+  if (!canRemoveFamilyMember(actor.role, target.role)) {
+    throw new FamilyServiceError('forbidden_role', 'Your family role cannot remove that member.', 403);
+  }
+
+  const remaining = await countOtherActiveMembers(db, familyId, target.id);
+  const removedAt = new Date();
+  const departed = await deactivateMembership(db, familyId, target.id, removedAt);
+  if (!departed) {
+    throw new FamilyServiceError('member_not_found', 'That person is no longer an active member of this family.', 404);
+  }
+
+  const { createNotifications } = await import('./notifications-service');
+  const eventKey = `${target.id}:${removedAt.toISOString()}`;
+  await createNotifications(db, [
+    ...remaining
+      .filter((member) => member.id !== actor.id)
+      .map((member) => ({
+        familyId,
+        recipientMemberId: member.id,
+        actorMemberId: actor.id,
+        type: 'member_removed',
+        title: `${target.displayName} was removed from the family`,
+        entityType: 'family_member',
+        entityId: target.id,
+        route: '/(family)/family',
+        dedupeKey: `member-removed:${eventKey}:${member.id}`
+      })),
+    {
+      familyId,
+      recipientMemberId: target.id,
+      actorMemberId: actor.id,
+      type: 'member_removed',
+      title: `You were removed from ${target.familyName}`,
+      entityType: 'family_member',
+      entityId: target.id,
+      route: '/',
+      dedupeKey: `member-removed:${eventKey}:${target.id}`
+    }
+  ]);
 }
 
 export async function createFamilyInvitation(

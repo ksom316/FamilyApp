@@ -22,6 +22,7 @@
     },
     "android": {
       "package": "com.familyapp.mobile",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/familyapp-adaptive-icon.png",
         "backgroundColor": "#0B1F5B"

@@ -67,7 +67,7 @@ export async function deleteAccount(db: Database, userId: string, storage: Objec
   }
 
   for (const membership of activeMemberships) {
-    await leaveFamily(db, userId, membership.familyId);
+    await leaveFamily(db, userId, membership.familyId, storage);
   }
 
   await removeMyProfilePhoto(db, userId, storage).catch(() => {});

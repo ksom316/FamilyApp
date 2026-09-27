@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { recipientsExcluding } from './notifications-service';
+import { markDepartureNotificationRead, recipientsExcluding } from './notifications-service';
 import { buildSafePushMessage, shouldSendNativePush } from './expo-push';
 import { isExpoPushToken, readExpoPushToken, readPushPlatform, registerPushDevice } from './push-devices-service';
 import { readPushDestination } from '../../mobile/lib/push-routing';
@@ -53,6 +53,28 @@ describe('push recipients and registration validation', () => {
   });
 });
 
+describe('inactive recipient notification reads', () => {
+  it('marks a recipient-owned removal notification without active-family authorization', async () => {
+    const calls = { updates: 0 };
+    const selectChain = {
+      from: () => selectChain,
+      innerJoin: () => selectChain,
+      where: () => selectChain,
+      limit: async () => [{ id: notification.id, readAt: null }]
+    };
+    const fakeDb = {
+      select: () => selectChain,
+      update: () => ({
+        set: () => ({
+          where: async () => { calls.updates += 1; }
+        })
+      })
+    };
+    await markDepartureNotificationRead(fakeDb as never, 'authenticated-user', notification.id);
+    expect(calls.updates).toBe(1);
+  });
+});
+
 describe('safe push payload construction', () => {
   it('uses a generic emergency preview and includes only safe routing metadata', () => {
     const message = buildSafePushMessage(notification, 'ExpoPushToken[abc_123-XYZ]');
@@ -84,11 +106,29 @@ describe('safe push payload construction', () => {
     expect(message).toMatchObject({ title: 'Kwaku left the family' });
   });
 
+  it('delivers member-removal pushes with a privacy-safe preview and safe home route', () => {
+    expect(shouldSendNativePush('member_removed')).toBe(true);
+    const message = buildSafePushMessage({
+      ...notification,
+      type: 'member_removed',
+      title: 'You were removed from a sensitive family name',
+      message: 'sensitive removal details',
+      route: '/'
+    }, 'ExpoPushToken[abc_123-XYZ]');
+    expect(message).toMatchObject({
+      title: 'Family membership updated',
+      body: 'Open FamilyApp to review a change to your family membership.'
+    });
+    expect(message?.body).not.toContain('sensitive');
+    expect(readPushDestination(message?.data)).toMatchObject({ route: '/', type: 'member_removed' });
+  });
+
   it('accepts allowlisted app routes and rejects arbitrary or malformed data', () => {
     expect(readPushDestination(buildSafePushMessage(notification, 'ExpoPushToken[abc]')?.data)).toEqual({
       familyId: notification.familyId,
       notificationId: notification.id,
-      route: notification.route
+      route: notification.route,
+      type: notification.type
     });
     expect(readPushDestination({
       kind: 'familyapp_notification',

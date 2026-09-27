@@ -1,7 +1,7 @@
 import { router, usePathname } from 'expo-router';
 import { useCallback, useEffect, type PropsWithChildren } from 'react';
 
-import { markNotificationRead } from '../lib/notifications';
+import { markDepartureNotificationRead, markNotificationRead } from '../lib/notifications';
 import {
   addPushResponseListener,
   addPushTokenRefreshListener,
@@ -21,8 +21,12 @@ export function PushNotificationsProvider({ children }: PropsWithChildren) {
   const openPush = useCallback((payload: Record<string, unknown>) => {
     const destination = readPushDestination(payload);
     if (!destination) return;
-    void markNotificationRead(destination.familyId, destination.notificationId).catch(() => {});
-    router.push(destination.route as never);
+    const markRead = destination.type === 'member_removed'
+      ? markDepartureNotificationRead(destination.notificationId)
+      : markNotificationRead(destination.familyId, destination.notificationId);
+    void markRead.catch(() => {});
+    if (destination.type === 'member_removed') router.replace(destination.route as never);
+    else router.push(destination.route as never);
   }, []);
 
   useEffect(() => {

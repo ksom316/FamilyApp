@@ -1,6 +1,6 @@
 import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { radius, spacing } from '@familyapp/config';
 
@@ -11,7 +11,7 @@ import { MemberAvatar } from '../../../components/MemberAvatar';
 import { Screen } from '../../../components/Screen';
 import { TextField } from '../../../components/TextField';
 import { useCurrentFamily } from '../../../lib/family-context';
-import { FamilyApiError, getFamilyMembers, type FamilyMember } from '../../../lib/families';
+import { FamilyApiError, getFamilyMembers, removeFamilyMember, type FamilyMember } from '../../../lib/families';
 import { createFamilyHousehold, getFamilyHouseholds, HouseholdApiError, type Household } from '../../../lib/households';
 
 export default function FamilyScreen() {
@@ -23,6 +23,7 @@ export default function FamilyScreen() {
   const [households, setHouseholds] = useState<Household[] | null>(null);
   const [householdsError, setHouseholdsError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
 
   const loadMembers = useCallback(async () => {
     setError(null);
@@ -46,6 +47,34 @@ export default function FamilyScreen() {
   useEffect(() => { void loadMembers(); }, [loadMembers]);
   useEffect(() => { void loadHouseholds(); }, [loadHouseholds]);
 
+  async function removeMember(member: FamilyMember) {
+    setRemovingMemberId(member.id);
+    setError(null);
+    try {
+      await removeFamilyMember(family.familyId, member.id);
+      setMembers((current) => current?.filter((entry) => entry.id !== member.id) ?? null);
+      await loadHouseholds();
+    } catch (caught) {
+      setError(caught instanceof FamilyApiError ? caught.message : 'That member could not be removed right now.');
+    } finally {
+      setRemovingMemberId(null);
+    }
+  }
+
+  function confirmRemoval(member: FamilyMember) {
+    const message = `Remove ${member.displayName} from the family? They will immediately lose access to the family's private content.`;
+    const run = () => void removeMember(member);
+    if (Platform.OS === 'web') {
+      const confirmFn = (globalThis as typeof globalThis & { confirm?: (text: string) => boolean }).confirm;
+      if (confirmFn?.(message)) run();
+      return;
+    }
+    Alert.alert(`Remove ${member.displayName} from the family?`, "They will immediately lose access to the family's private content.", [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: run }
+    ]);
+  }
+
   return (
     <Screen scroll maxWidth={920} contentStyle={styles.content}>
       <View style={styles.headingRow}>
@@ -59,7 +88,19 @@ export default function FamilyScreen() {
 
       {error ? <Card style={styles.stateCard}><AppText variant="body" tone="danger">{error}</AppText><Button label="Try again" onPress={() => void loadMembers()} style={styles.retry} variant="secondary" /></Card> : null}
       {!members && !error ? <View style={styles.loading}><ActivityIndicator color={theme.primary} /><AppText variant="caption" tone="mutedText" style={styles.loadingText}>Gathering your people…</AppText></View> : null}
-      {members ? <View style={styles.list}>{members.map((member) => <MemberCard key={member.id} member={member} familyId={family.familyId} />)}</View> : null}
+      {members ? <View style={styles.list}>{members.map((member) => (
+        <MemberCard
+          key={member.id}
+          member={member}
+          familyId={family.familyId}
+          canRemove={member.id !== family.id && (
+            (family.role === 'owner' && member.role !== 'owner') ||
+            (family.role === 'guardian' && member.role === 'member')
+          )}
+          removing={removingMemberId === member.id}
+          onRemove={() => confirmRemoval(member)}
+        />
+      ))}</View> : null}
 
       <View style={styles.sectionHeading}>
         <View style={styles.headingCopy}>
@@ -110,7 +151,13 @@ export default function FamilyScreen() {
   );
 }
 
-function MemberCard({ member, familyId }: { member: FamilyMember; familyId: string }) {
+function MemberCard({ member, familyId, canRemove, removing, onRemove }: {
+  member: FamilyMember;
+  familyId: string;
+  canRemove: boolean;
+  removing: boolean;
+  onRemove: () => void;
+}) {
   const { colors: theme } = useAppTheme();
   const roleLabel = member.role === 'owner' ? 'Family creator' : member.role === 'guardian' ? 'Guardian' : 'Family member';
   const roleColor = member.role === 'owner' ? theme.primarySoft : member.role === 'guardian' ? theme.secondarySoft : theme.successSoft;
@@ -122,6 +169,7 @@ function MemberCard({ member, familyId }: { member: FamilyMember; familyId: stri
       <MemberAvatar member={{ ...member, memberId: member.id }} familyId={familyId} size={56} />
       <View style={styles.memberCopy}><AppText variant="label">{member.displayName}</AppText><AppText variant="caption" tone="mutedText" style={styles.joined}>With your family since {joined}</AppText></View>
       <View style={[styles.roleBadge, { backgroundColor: roleColor }]}><AppText variant="caption" tone={roleTone}>{roleLabel}</AppText></View>
+      {canRemove ? <Button label="Remove" variant="quiet" loading={removing} onPress={onRemove} /> : null}
     </Card>
   );
 }

@@ -22,7 +22,8 @@ const PUSH_NOTIFICATION_TYPES = new Set([
   'poll_closing_soon',
   'poll_closed',
   'capsule_unlocked',
-  'member_left'
+  'member_left',
+  'member_removed'
 ]);
 
 const CRITICAL_TYPES = new Set(['emergency_reported', 'come_find_me_started']);
@@ -79,6 +80,9 @@ export function buildSafePushMessage(notification: PushNotificationRecord, token
   } else if (notification.type === 'capsule_unlocked') {
     title = 'A time capsule is ready';
     body = 'Open FamilyApp to view the unlocked capsule.';
+  } else if (notification.type === 'member_removed') {
+    title = 'Family membership updated';
+    body = 'Open FamilyApp to review a change to your family membership.';
   }
 
   const critical = CRITICAL_TYPES.has(notification.type);

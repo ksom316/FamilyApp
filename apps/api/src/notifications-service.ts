@@ -171,6 +171,33 @@ export async function markNotificationRead(db: Database, userId: string, familyI
   }
 }
 
+// A removal notification belongs to an inactive membership by design, so the ordinary
+// family-scoped read endpoint must not authorize it through requireFamilyMembership.
+// This narrow endpoint instead proves that the notification's recipient membership
+// belongs to the authenticated user, and accepts only the departure notification type.
+export async function markDepartureNotificationRead(db: Database, userId: string, notificationId: string) {
+  assertUuid(notificationId);
+  const [owned] = await db
+    .select({ id: familyNotifications.id, readAt: familyNotifications.readAt })
+    .from(familyNotifications)
+    .innerJoin(familyMembers, and(
+      eq(familyNotifications.recipientMemberId, familyMembers.id),
+      eq(familyNotifications.familyId, familyMembers.familyId)
+    ))
+    .where(and(
+      eq(familyNotifications.id, notificationId),
+      eq(familyNotifications.type, 'member_removed'),
+      eq(familyMembers.userId, userId)
+    ))
+    .limit(1);
+  if (!owned) {
+    throw new NotificationServiceError('notification_not_found', 'That notification could not be found.', 404);
+  }
+  if (!owned.readAt) {
+    await db.update(familyNotifications).set({ readAt: new Date() }).where(eq(familyNotifications.id, owned.id));
+  }
+}
+
 export async function markAllNotificationsRead(db: Database, userId: string, familyId: string) {
   const membership = await requireFamilyMembership(db, userId, familyId);
   await db
