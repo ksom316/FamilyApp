@@ -18,10 +18,10 @@ function warnInvalidWebPushConfig(message: string) {
 }
 
 function readWebPushConfig(env: AuthBindings): WebPushConfig | null {
-  const publicKey = env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim();
-  const privateKey = env.WEB_PUSH_VAPID_PRIVATE_KEY?.trim();
+  const publicKey = env.WEB_PUSH_VAPID_PUBLIC_KEY;
+  const privateKey = env.WEB_PUSH_VAPID_PRIVATE_KEY;
   const subject = env.WEB_PUSH_SUBJECT?.trim();
-  const configured = [publicKey, privateKey, subject].filter(Boolean).length;
+  const configured = [publicKey, privateKey, subject].filter((value) => Boolean(value?.trim())).length;
   if (configured === 0) return null;
   if (configured !== 3) {
     warnInvalidWebPushConfig('Web Push is disabled because its three VAPID settings are not all configured.');

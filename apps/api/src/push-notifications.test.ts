@@ -20,6 +20,11 @@ const notification = {
 };
 const validP256dh = `B${'A'.repeat(86)}`;
 const validAuth = 'B'.repeat(22);
+const testVapidConfig = {
+  subject: 'mailto:test@example.com',
+  privateKey: 'VvFbnS5QlP5PcJzYyEpRQj93SFJetREtqqzbGAfK3RE',
+  publicKey: 'BKKXE3jJV5UJ6c8HVPam6DvMPGZK26r-M7ojsO2T_KdjdeMT2d7oQpaO-VI3o3wn33mQ8JlHta3OSJ5f67Ac5ZY'
+};
 
 describe('push recipients and registration validation', () => {
   it('deduplicates recipients and excludes the sender', () => {
@@ -189,9 +194,8 @@ describe('safe push payload construction', () => {
       select: () => selectChain,
       delete: () => ({ where: async (condition: unknown) => { deleted.push(condition); } })
     };
-    await expect(deliverWebPushes(fakeDb as never, [notification], {
-      publicKey: 'unused', privateKey: 'unused', subject: 'mailto:test@example.com'
-    }, async () => { throw new Error('must not send'); })).resolves.toBeUndefined();
+    await expect(deliverWebPushes(fakeDb as never, [notification], testVapidConfig,
+      async () => { throw new Error('must not send'); })).resolves.toBeUndefined();
     expect(deleted).toHaveLength(1);
   });
 
@@ -215,7 +219,7 @@ describe('safe push payload construction', () => {
     await deliverWebPushes(
       fakeDb as never,
       [notification],
-      { publicKey: 'unused', privateKey: 'unused', subject: 'mailto:test@example.com' },
+      testVapidConfig,
       async () => new Response(null, { status: 410 }),
       async () => ({ method: 'POST', headers: { authorization: '', ttl: '1', 'content-encoding': '', 'content-length': '0', 'content-type': '' }, body: new Uint8Array() })
     );
@@ -224,8 +228,6 @@ describe('safe push payload construction', () => {
 
   it('keeps Web Push lookup failures best-effort', async () => {
     const fakeDb = { select: () => { throw new Error('database unavailable'); } };
-    await expect(deliverWebPushes(fakeDb as never, [notification], {
-      publicKey: 'unused', privateKey: 'unused', subject: 'mailto:test@example.com'
-    })).resolves.toBeUndefined();
+    await expect(deliverWebPushes(fakeDb as never, [notification], testVapidConfig)).resolves.toBeUndefined();
   });
 });

@@ -1,4 +1,3 @@
-import { buildPushPayload } from '@block65/webcrypto-web-push';
 import { eq, inArray } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
@@ -10,6 +9,7 @@ import {
   shouldSendPush,
   type PushNotificationRecord
 } from './expo-push';
+import { buildWorkerPushPayload, validateVapidConfig } from './vapid';
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const SAFE_WEB_ROUTES = [
@@ -93,10 +93,19 @@ export async function deliverWebPushes(
   notifications: PushNotificationRecord[],
   config: WebPushConfig | null = getWebPushConfig(db),
   send: typeof fetch = fetch,
-  build: typeof buildPushPayload = buildPushPayload
+  build: typeof buildWorkerPushPayload = buildWorkerPushPayload
 ) {
   const eligible = notifications.filter((notification) => shouldSendPush(notification.type));
   if (!eligible.length || !config) return;
+
+  const validatedConfig = await validateVapidConfig(config).catch((error: unknown) => {
+    console.error(
+      'Web Push configuration is invalid',
+      error instanceof Error ? error.message : 'unknown configuration error'
+    );
+    return null;
+  });
+  if (!validatedConfig) return;
 
   try {
     const memberIds = [...new Set(eligible.map((notification) => notification.recipientMemberId))];
@@ -130,7 +139,7 @@ export async function deliverWebPushes(
             endpoint: subscription.endpoint,
             expirationTime: null,
             keys: { p256dh: subscription.p256dh, auth: subscription.auth }
-          }, config);
+          }, validatedConfig);
           const response = await send(subscription.endpoint, request);
           if (response.status === 404 || response.status === 410) {
             await deleteSubscriptions(db, [subscription.id]);
