@@ -1,6 +1,6 @@
 import { useAppTheme } from '../../../lib/app-theme';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { radius, spacing } from '@familyapp/config';
 
@@ -13,6 +13,7 @@ import { TextField } from '../../../components/TextField';
 import { useCurrentFamily } from '../../../lib/family-context';
 import { FamilyApiError, getFamilyMembers, removeFamilyMember, type FamilyMember } from '../../../lib/families';
 import { createFamilyHousehold, getFamilyHouseholds, HouseholdApiError, type Household } from '../../../lib/households';
+import { canShowRemoveMember, isStackedMemberCard } from '../../../lib/responsive-layout';
 
 export default function FamilyScreen() {
   const family = useCurrentFamily();
@@ -93,10 +94,7 @@ export default function FamilyScreen() {
           key={member.id}
           member={member}
           familyId={family.familyId}
-          canRemove={member.id !== family.id && (
-            (family.role === 'owner' && member.role !== 'owner') ||
-            (family.role === 'guardian' && member.role === 'member')
-          )}
+          canRemove={canShowRemoveMember(family.id, family.role, member.id, member.role)}
           removing={removingMemberId === member.id}
           onRemove={() => confirmRemoval(member)}
         />
@@ -159,17 +157,23 @@ function MemberCard({ member, familyId, canRemove, removing, onRemove }: {
   onRemove: () => void;
 }) {
   const { colors: theme } = useAppTheme();
+  const { width } = useWindowDimensions();
+  const stacked = isStackedMemberCard(width);
   const roleLabel = member.role === 'owner' ? 'Family creator' : member.role === 'guardian' ? 'Guardian' : 'Family member';
   const roleColor = member.role === 'owner' ? theme.primarySoft : member.role === 'guardian' ? theme.secondarySoft : theme.successSoft;
   const roleTone = member.role === 'owner' ? 'primary' : member.role === 'guardian' ? 'secondary' : 'success';
   const joined = new Date(member.joinedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
 
   return (
-    <Card style={styles.memberCard}>
-      <MemberAvatar member={{ ...member, memberId: member.id }} familyId={familyId} size={56} />
-      <View style={styles.memberCopy}><AppText variant="label">{member.displayName}</AppText><AppText variant="caption" tone="mutedText" style={styles.joined}>With your family since {joined}</AppText></View>
-      <View style={[styles.roleBadge, { backgroundColor: roleColor }]}><AppText variant="caption" tone={roleTone}>{roleLabel}</AppText></View>
-      {canRemove ? <Button label="Remove" variant="quiet" loading={removing} onPress={onRemove} /> : null}
+    <Card style={[styles.memberCard, stacked && styles.memberCardStacked]}>
+      <View style={styles.memberIdentity}>
+        <MemberAvatar member={{ ...member, memberId: member.id }} familyId={familyId} size={56} />
+        <View style={styles.memberCopy}><AppText variant="label">{member.displayName}</AppText><AppText variant="caption" tone="mutedText" style={styles.joined}>With your family since {joined}</AppText></View>
+      </View>
+      <View style={[styles.memberControls, stacked && styles.memberControlsStacked]}>
+        <View style={[styles.roleBadge, { backgroundColor: roleColor }]}><AppText variant="caption" tone={roleTone}>{roleLabel}</AppText></View>
+        {canRemove ? <Button label="Remove" variant="quiet" loading={removing} onPress={onRemove} /> : null}
+      </View>
     </Card>
   );
 }
@@ -233,9 +237,13 @@ const styles = StyleSheet.create({
   familyNote: { borderRadius: radius.lg, marginTop: spacing.xl, padding: spacing.lg },
   list: { gap: spacing.sm, marginTop: spacing.xl },
   memberCard: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
-  memberCopy: { flex: 1, minWidth: 0 },
+  memberCardStacked: { alignItems: 'stretch', flexDirection: 'column' },
+  memberIdentity: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.md, minWidth: 0 },
+  memberCopy: { flex: 1, flexShrink: 1, minWidth: 0 },
   joined: { marginTop: spacing.xs },
-  roleBadge: { borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  memberControls: { alignItems: 'center', flexDirection: 'row', flexShrink: 0, gap: spacing.sm },
+  memberControlsStacked: { flexWrap: 'wrap', justifyContent: 'space-between', paddingLeft: 56 + spacing.md },
+  roleBadge: { alignSelf: 'flex-start', borderRadius: radius.pill, flexShrink: 0, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   loading: { alignItems: 'center', paddingVertical: spacing.xxl },
   loadingText: { marginTop: spacing.md },
   stateCard: { marginTop: spacing.lg },

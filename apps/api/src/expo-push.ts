@@ -4,6 +4,7 @@ import type { Database } from '@familyapp/db';
 import { familyMembers, pushDevices } from '@familyapp/db/schema';
 
 import { isExpoPushToken } from './push-devices-service';
+import { MAX_CHAT_NOTIFICATION_PREVIEW_LENGTH, normalizeNotificationText } from './notification-content';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_BATCH_SIZE = 100;
@@ -22,6 +23,7 @@ const PUSH_NOTIFICATION_TYPES = new Set([
   'poll_closing_soon',
   'poll_closed',
   'capsule_unlocked',
+  'member_joined',
   'member_left',
   'member_removed'
 ]);
@@ -75,11 +77,11 @@ export function buildPrivacySafePushContent(notification: PushNotificationRecord
     title = 'Come Find Me request';
     body = 'A family member needs you to open Come Find Me.';
   } else if (notification.type === 'family_message') {
-    title = 'New family message';
-    body = 'Open FamilyApp to read the family chat.';
+    title = normalizeNotificationText(notification.title, 140);
+    body = normalizeNotificationText(notification.message ?? 'Open FamilyApp to read the family chat.', MAX_CHAT_NOTIFICATION_PREVIEW_LENGTH);
   } else if (notification.type === 'private_message') {
-    title = 'New private message';
-    body = 'Open FamilyApp to read your private conversation.';
+    title = normalizeNotificationText(notification.title, 140);
+    body = normalizeNotificationText(notification.message ?? 'Open FamilyApp to read your private conversation.', MAX_CHAT_NOTIFICATION_PREVIEW_LENGTH);
   } else if (notification.type === 'capsule_unlocked') {
     title = 'A time capsule is ready';
     body = 'Open FamilyApp to view the unlocked capsule.';

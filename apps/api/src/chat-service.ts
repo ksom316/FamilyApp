@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 import type { Database } from '@familyapp/db';
-import { familyMembers, familyMessages, users } from '@familyapp/db/schema';
+import { families, familyMembers, familyMessages, users } from '@familyapp/db/schema';
 
 import { requireFamilyMembership } from './family-service';
 import {
@@ -10,6 +10,7 @@ import {
   familyMemberIds,
   recipientsExcluding
 } from './notifications-service';
+import { familyMessageNotificationContent } from './notification-content';
 
 export const MAX_MESSAGE_LENGTH = 2000;
 export const MESSAGE_PAGE_SIZE = 50;
@@ -116,14 +117,17 @@ export async function createFamilyMessage(
     .limit(1);
 
   if (!message) throw new Error('Created message could not be loaded.');
+  const [family] = await db.select({ name: families.name }).from(families).where(eq(families.id, familyId)).limit(1);
+  if (!family) throw new Error('Message family could not be loaded.');
+  const notificationContent = familyMessageNotificationContent(message.sender.displayName, family.name, message.text);
   const recipientIds = await familyMemberIds(db, familyId);
   await createNotifications(db, recipientsExcluding(recipientIds, membership.id).map((recipientMemberId) => ({
     familyId,
     recipientMemberId,
     actorMemberId: membership.id,
     type: 'family_message',
-    title: `${message.sender.displayName} sent a family message`,
-    message: 'Open FamilyApp to read the family chat.',
+    title: notificationContent.title,
+    message: notificationContent.body,
     entityType: 'family_message',
     entityId: message.id,
     route: '/(family)/chat/family',

@@ -426,7 +426,7 @@ export async function acceptFamilyInvitation(db: Database, userId: string, rawTo
     throw new FamilyServiceError('expired_invitation', 'That invitation has expired.', 410);
   }
 
-  type AcceptanceRow = { familyId: string; joined: boolean };
+  type AcceptanceRow = { invitationId: string; familyId: string; memberId: string; joined: boolean };
   const result = await db.execute(sql`
     with accepted_invitation as (
       update family_invitations
@@ -435,7 +435,13 @@ export async function acceptFamilyInvitation(db: Database, userId: string, rawTo
         and accepted_at is null
         and revoked_at is null
         and expires_at > now()
-      returning family_id, role
+      returning id, family_id, role
+    ), existing_active as (
+      select fm.id
+      from family_members fm
+      inner join accepted_invitation on accepted_invitation.family_id = fm.family_id
+      where fm.user_id = ${userId}::uuid
+        and fm.left_at is null
     ), new_member as (
       insert into family_members (family_id, user_id, role)
       select family_id, ${userId}::uuid, role
@@ -446,10 +452,12 @@ export async function acceptFamilyInvitation(db: Database, userId: string, rawTo
       -- (family_id, user_id) unique index forever. Already-active members re-accepting a
       -- redundant invitation just get a harmless no-op update.
       on conflict (family_id, user_id) do update set left_at = null, role = excluded.role
-      returning family_id
+      returning id, family_id
     )
-    select accepted_invitation.family_id as "familyId",
-           (new_member.family_id is not null) as joined
+    select accepted_invitation.id as "invitationId",
+           accepted_invitation.family_id as "familyId",
+           new_member.id as "memberId",
+           not exists (select 1 from existing_active) as joined
     from accepted_invitation
     left join new_member on new_member.family_id = accepted_invitation.family_id
   `) as unknown as { rows: AcceptanceRow[] };
@@ -457,6 +465,37 @@ export async function acceptFamilyInvitation(db: Database, userId: string, rawTo
   const acceptance = result.rows[0];
   if (!acceptance) {
     throw new FamilyServiceError('used_invitation', 'That invitation is no longer available.', 409);
+  }
+
+  if (acceptance.joined) {
+    const [joinedMember] = await db
+      .select({ displayName: users.name, familyName: families.name })
+      .from(familyMembers)
+      .innerJoin(users, eq(familyMembers.userId, users.id))
+      .innerJoin(families, eq(familyMembers.familyId, families.id))
+      .where(and(
+        eq(familyMembers.id, acceptance.memberId),
+        eq(familyMembers.familyId, acceptance.familyId),
+        isNull(familyMembers.leftAt)
+      ))
+      .limit(1);
+
+    if (joinedMember) {
+      const { createNotifications, eventNotificationDedupeKey, familyMemberIds, recipientsExcluding } = await import('./notifications-service');
+      const recipients = recipientsExcluding(await familyMemberIds(db, acceptance.familyId), acceptance.memberId);
+      await createNotifications(db, recipients.map((recipientMemberId) => ({
+        familyId: acceptance.familyId,
+        recipientMemberId,
+        actorMemberId: acceptance.memberId,
+        type: 'member_joined',
+        title: 'FamilyApp',
+        message: `${joinedMember.displayName} joined ${joinedMember.familyName}`,
+        entityType: 'family_member',
+        entityId: acceptance.memberId,
+        route: '/(family)/family',
+        dedupeKey: eventNotificationDedupeKey('member_joined', acceptance.invitationId, recipientMemberId)
+      })));
+    }
   }
 
   return { familyId: acceptance.familyId, status: acceptance.joined ? 'accepted' as const : 'already_member' as const };

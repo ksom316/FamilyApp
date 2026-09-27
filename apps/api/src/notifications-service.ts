@@ -91,7 +91,10 @@ export async function createNotifications(db: Database, entries: NotificationInp
 
 /** All current member ids for a family. */
 export async function familyMemberIds(db: Database, familyId: string) {
-  const rows = await db.select({ id: familyMembers.id }).from(familyMembers).where(eq(familyMembers.familyId, familyId));
+  const rows = await db.select({ id: familyMembers.id }).from(familyMembers).where(and(
+    eq(familyMembers.familyId, familyId),
+    isNull(familyMembers.leftAt)
+  ));
   return rows.map((row) => row.id);
 }
 

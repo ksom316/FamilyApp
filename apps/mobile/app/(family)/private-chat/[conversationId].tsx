@@ -25,6 +25,7 @@ import { FadeInView } from '../../../components/Motion';
 import { Screen } from '../../../components/Screen';
 import { useCurrentFamily } from '../../../lib/family-context';
 import { requestAttentionRefresh } from '../../../lib/navigation-attention';
+import { isCompactChatEmptyState } from '../../../lib/responsive-layout';
 import {
   getPrivateMessages,
   markPrivateConversationRead,
@@ -62,6 +63,7 @@ export default function PrivateConversationScreen() {
   const { colors: theme } = useAppTheme();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
+  const compactEmptyState = isCompactChatEmptyState(width);
   const [conversation, setConversation] = useState<PrivateConversation | null>(null);
   const [messages, setMessages] = useState<PrivateMessage[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -184,7 +186,7 @@ export default function PrivateConversationScreen() {
           </View>
         </View>
 
-        <Card padded={false} style={styles.chatCard}>
+        <Card padded={false} style={[styles.chatCard, compactEmptyState && messages?.length === 0 && styles.compactEmptyChatCard]}>
           {loadError && messages ? (
             <View style={[styles.errorBanner, { backgroundColor: theme.dangerSoft, borderColor: theme.border }]}>
               <AppText variant="caption" tone="danger" style={styles.errorText}>{loadError}</AppText>
@@ -206,7 +208,7 @@ export default function PrivateConversationScreen() {
           ) : (
             <ScrollView
               ref={scrollRef}
-              contentContainerStyle={[styles.messageList, messages.length === 0 && styles.emptyList]}
+              contentContainerStyle={[styles.messageList, messages.length === 0 && styles.emptyList, compactEmptyState && messages.length === 0 && styles.compactEmptyList]}
               keyboardShouldPersistTaps="handled"
               onContentSizeChange={() => {
                 if (shouldAutoScrollRef.current) scrollRef.current?.scrollToEnd({ animated: messages.length > 0 });
@@ -215,7 +217,7 @@ export default function PrivateConversationScreen() {
               scrollEventThrottle={100}
             >
               {messages.length === 0 ? (
-                <View style={styles.emptyState}>
+                <View style={[styles.emptyState, compactEmptyState && styles.compactEmptyState]}>
                   <AppText variant="heading" align="center">Start your private conversation</AppText>
                   <AppText variant="body" tone="mutedText" align="center" style={styles.emptyText}>Messages here are visible only to you and {conversation?.recipient.displayName ?? 'this family member'}.</AppText>
                 </View>
@@ -275,6 +277,7 @@ const styles = StyleSheet.create({
   recipientHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   recipientCopy: { flex: 1, gap: spacing.xs, minWidth: 0 },
   chatCard: { flex: 1, minHeight: 300, overflow: 'hidden' },
+  compactEmptyChatCard: { flex: 0, minHeight: 0 },
   centerState: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.xl },
   stateText: { marginTop: spacing.md },
   retryButton: { marginTop: spacing.lg },
@@ -282,7 +285,9 @@ const styles = StyleSheet.create({
   errorText: { flex: 1 },
   messageList: { gap: spacing.md, padding: spacing.lg },
   emptyList: { flexGrow: 1, justifyContent: 'center' },
+  compactEmptyList: { flexGrow: 0, justifyContent: 'flex-start' },
   emptyState: { alignItems: 'center', alignSelf: 'center', maxWidth: 420, padding: spacing.lg },
+  compactEmptyState: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   emptyText: { marginTop: spacing.sm },
   messageRow: { alignItems: 'flex-end', flexDirection: 'row', gap: spacing.sm },
   myMessageRow: { justifyContent: 'flex-end' },

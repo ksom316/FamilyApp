@@ -7,6 +7,11 @@ import { isExpoPushToken, readExpoPushToken, readPushPlatform, registerPushDevic
 import { buildSafeWebPushPayload, deliverWebPushes, isSafeWebPushRoute } from './web-push';
 import { readWebPushSubscription, registerWebPushSubscription } from './web-push-subscriptions-service';
 import { readPushDestination } from '../../mobile/lib/push-routing';
+import {
+  familyMessageNotificationContent,
+  MAX_CHAT_NOTIFICATION_PREVIEW_LENGTH,
+  privateMessageNotificationContent
+} from './notification-content';
 
 const notification = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -138,6 +143,46 @@ describe('safe push payload construction', () => {
     }
   });
 
+  it('uses sender and family context with one sanitized preview for native and Web Push', () => {
+    const content = familyMessageNotificationContent(
+      ' Kwaku ',
+      'The African Family',
+      '  Are we\n meeting   at 6 today?  '
+    );
+    const messageNotification = {
+      ...notification,
+      type: 'family_message',
+      title: content.title,
+      message: content.body,
+      route: '/(family)/chat/family'
+    };
+
+    expect(content).toEqual({
+      title: 'Kwaku • The African Family',
+      body: 'Are we meeting at 6 today?'
+    });
+    expect(buildSafePushMessage(messageNotification, 'ExpoPushToken[abc_123-XYZ]')).toMatchObject(content);
+    expect(buildSafeWebPushPayload(messageNotification)).toMatchObject(content);
+  });
+
+  it('uses the sender and a safely truncated private-message preview', () => {
+    const content = privateMessageNotificationContent('  Ama  ', `First line\n\n${'word '.repeat(80)}`);
+    const messageNotification = {
+      ...notification,
+      type: 'private_message',
+      title: content.title,
+      message: content.body,
+      route: '/(family)/private-chat/44444444-4444-4444-8444-444444444444'
+    };
+
+    expect(content.title).toBe('Ama');
+    expect(content.body).not.toMatch(/\s{2,}|\r|\n/);
+    expect(Array.from(content.body)).toHaveLength(MAX_CHAT_NOTIFICATION_PREVIEW_LENGTH);
+    expect(content.body.endsWith('…')).toBe(true);
+    expect(buildSafePushMessage(messageNotification, 'ExpoPushToken[abc_123-XYZ]')?.body).toBe(content.body);
+    expect(buildSafeWebPushPayload(messageNotification)?.body).toBe(content.body);
+  });
+
   it('delivers a member-left notification through the same native push pipeline', () => {
     expect(shouldSendNativePush('member_left')).toBe(true);
     const message = buildSafePushMessage({
@@ -148,6 +193,27 @@ describe('safe push payload construction', () => {
       route: '/(family)/family'
     }, 'ExpoPushToken[abc_123-XYZ]');
     expect(message).toMatchObject({ title: 'Kwaku left the family' });
+  });
+
+  it('delivers member-joined content through native and Web Push', () => {
+    const joined = {
+      ...notification,
+      type: 'member_joined',
+      title: 'FamilyApp',
+      message: 'Ama joined The African Family',
+      entityType: 'family_member',
+      route: '/(family)/family'
+    };
+    expect(shouldSendNativePush(joined.type)).toBe(true);
+    expect(buildSafePushMessage(joined, 'ExpoPushToken[abc_123-XYZ]')).toMatchObject({
+      title: joined.title,
+      body: joined.message
+    });
+    expect(buildSafeWebPushPayload(joined)).toMatchObject({
+      title: joined.title,
+      body: joined.message,
+      route: '/family'
+    });
   });
 
   it('delivers member-removal pushes with a privacy-safe preview and safe home route', () => {
