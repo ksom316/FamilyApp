@@ -34,7 +34,7 @@ import { getWeeklyRecap, WeeklyRecapApiError, type WeeklyRecap } from '../../lib
 
 const BRIEFING_POLL_INTERVAL_MS = 60_000;
 const MESSAGES_POLL_INTERVAL_MS = 30_000;
-const WEEKLY_RECAP_HEADING = "Your family's week";
+const WEEKLY_RECAP_HEADING = 'This Week';
 
 // The family-photo card needs to be both animated (the ambient drift) and pressable (the
 // unobtrusive tap-to-manage/view interaction) on the very same element, so it's a single
