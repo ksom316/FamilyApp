@@ -67,7 +67,7 @@ export function FamilyOnboarding({ onComplete }: { onComplete: () => Promise<voi
             <AppText variant="body" tone="mutedText" style={styles.cardIntro}>FamilyApp keeps your family space private and close.</AppText>
             <View style={styles.actions}>
               <Button fullWidth label="Create a Family" onPress={() => choose('create')} />
-              <Button fullWidth label="Join a Family" onPress={() => choose('join')} variant="secondary" />
+              <Button fullWidth label="Join" onPress={() => choose('join')} variant="secondary" />
             </View>
           </> : <>
             <Pressable accessibilityRole="button" onPress={() => choose('choices')} style={styles.back}><AppText variant="caption" tone="secondary">← Back to choices</AppText></Pressable>
