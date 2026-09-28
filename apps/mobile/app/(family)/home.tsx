@@ -34,6 +34,7 @@ import { getWeeklyRecap, WeeklyRecapApiError, type WeeklyRecap } from '../../lib
 
 const BRIEFING_POLL_INTERVAL_MS = 60_000;
 const MESSAGES_POLL_INTERVAL_MS = 30_000;
+const WEEKLY_RECAP_HEADING = "Your family's week";
 
 // The family-photo card needs to be both animated (the ambient drift) and pressable (the
 // unobtrusive tap-to-manage/view interaction) on the very same element, so it's a single
@@ -355,7 +356,7 @@ export default function FamilyHomeScreen() {
       </FadeInView>
 
       <View style={styles.sectionHeader}>
-        <View><AppText variant="heading">Make it yours</AppText><AppText variant="caption" tone="mutedText" style={styles.sectionSubtitle}>A few ways to get started</AppText></View>
+        <View style={styles.sectionHeaderCopy}><AppText variant="heading" style={styles.sectionHeading}>Make it yours</AppText><AppText variant="caption" tone="mutedText" style={styles.sectionSubtitle}>A few ways to get started</AppText></View>
       </View>
       <View style={styles.quickActions}>
         <Card style={styles.actionCard}>
@@ -508,7 +509,7 @@ function TodayBriefing({ briefing, error, onRetry, theme, isCompact }: {
   return (
     <View style={styles.briefingSection}>
       <View style={styles.sectionHeader}>
-        <View><AppText variant="heading">Today</AppText><AppText variant="caption" tone="mutedText" style={styles.sectionSubtitle}>Here’s what’s happening today.</AppText></View>
+        <View style={styles.sectionHeaderCopy}><AppText variant="heading" style={styles.sectionHeading}>Today</AppText><AppText variant="caption" tone="mutedText" style={styles.sectionSubtitle}>Here’s what’s happening today.</AppText></View>
       </View>
 
       {!hasAnything ? (
@@ -661,7 +662,7 @@ function WeeklyRecapSection({ recap, error, onRetry, theme, isCompact }: {
     return (
       <View style={styles.briefingSection}>
         <View style={styles.sectionHeader}>
-          <View><AppText variant="heading">Your family’s week</AppText></View>
+          <View style={styles.sectionHeaderCopy}><AppText variant="heading" style={styles.sectionHeading}>{WEEKLY_RECAP_HEADING}</AppText></View>
         </View>
         <Card style={styles.briefingEmptyCard}>
           <AppText variant="caption" tone="mutedText" align="center">A quiet week so far. Your upcoming family plans will appear here.</AppText>
@@ -673,7 +674,7 @@ function WeeklyRecapSection({ recap, error, onRetry, theme, isCompact }: {
   return (
     <View style={styles.briefingSection}>
       <View style={styles.sectionHeader}>
-        <View><AppText variant="heading">Your family’s week</AppText></View>
+        <View style={styles.sectionHeaderCopy}><AppText variant="heading" style={styles.sectionHeading}>{WEEKLY_RECAP_HEADING}</AppText></View>
       </View>
 
       {hasHighlights ? (
@@ -1026,6 +1027,10 @@ const styles = StyleSheet.create({
   metricRow: { alignItems: 'baseline', flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   overviewTitle: { marginVertical: spacing.xs },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xxl },
+  // Constrain copy inside the horizontal row so Android wraps it instead of measuring it
+  // at its intrinsic width and clipping the trailing words beyond the screen edge.
+  sectionHeaderCopy: { flex: 1, minWidth: 0 },
+  sectionHeading: { flexShrink: 1, width: '100%' },
   sectionSubtitle: { marginTop: spacing.xs },
   quickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.md },
   actionCard: { flexBasis: '48%', flexGrow: 1, minWidth: 155, padding: spacing.md },
