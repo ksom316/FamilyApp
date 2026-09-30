@@ -74,25 +74,25 @@ export function buildPrivacySafePushContent(notification: PushNotificationRecord
   if (!shouldSendPush(notification.type) || !notification.route) return null;
 
   let title = notification.title;
-  let body = notification.message ?? 'Open FamilyApp to view it.';
+  let body = notification.message ?? 'Open Kinzae to view it.';
   if (notification.type === 'emergency_reported') {
     title = 'Emergency alert';
-    body = 'A family emergency alert needs your attention. Open FamilyApp for details.';
+    body = 'A family emergency alert needs your attention. Open Kinzae for details.';
   } else if (notification.type === 'come_find_me_started') {
     title = 'Come Find Me request';
     body = 'A family member needs you to open Come Find Me.';
   } else if (notification.type === 'family_message') {
     title = normalizeNotificationText(notification.title, 140);
-    body = normalizeNotificationText(notification.message ?? 'Open FamilyApp to read the family chat.', MAX_CHAT_NOTIFICATION_PREVIEW_LENGTH);
+    body = normalizeNotificationText(notification.message ?? 'Open Kinzae to read the family chat.', MAX_CHAT_NOTIFICATION_PREVIEW_LENGTH);
   } else if (notification.type === 'private_message') {
     title = normalizeNotificationText(notification.title, 140);
-    body = normalizeNotificationText(notification.message ?? 'Open FamilyApp to read your private conversation.', MAX_CHAT_NOTIFICATION_PREVIEW_LENGTH);
+    body = normalizeNotificationText(notification.message ?? 'Open Kinzae to read your private conversation.', MAX_CHAT_NOTIFICATION_PREVIEW_LENGTH);
   } else if (notification.type === 'capsule_unlocked') {
     title = 'A time capsule is ready';
-    body = 'Open FamilyApp to view the unlocked capsule.';
+    body = 'Open Kinzae to view the unlocked capsule.';
   } else if (notification.type === 'member_removed') {
     title = 'Family membership updated';
-    body = 'Open FamilyApp to review a change to your family membership.';
+    body = 'Open Kinzae to review a change to your family membership.';
   }
 
   return {

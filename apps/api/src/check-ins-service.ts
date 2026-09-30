@@ -84,7 +84,7 @@ type CreateCheckInInput = { status: unknown; message?: unknown };
 export function checkInNotificationContent(displayName: string, status: CheckInStatus) {
   const memberName = normalizeNotificationText(displayName, 100) || 'A family member';
   return {
-    title: 'FamilyApp',
+    title: 'Kinzae',
     body: status === 'safe'
       ? `${memberName} marked themselves as safe.`
       : `${memberName} has arrived safely.`

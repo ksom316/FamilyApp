@@ -153,13 +153,13 @@ export default function ProfileScreen() {
       <AppText variant="eyebrow" tone="primary">Your profile</AppText>
       <AppText variant="display" style={styles.title}>Profile picture & avatar</AppText>
       <AppText variant="body" tone="mutedText" style={styles.subtitle}>
-        Choose how you appear across FamilyApp — a photo, a FamilyApp Avatar, or your initials.
+        Choose how you appear across Kinzae — a photo, a Kinzae Avatar, or your initials.
       </AppText>
 
       <FadeInView distance={6}>
       <Card elevated style={styles.appearanceCard}>
         <AppText variant="eyebrow" tone="primary">Appearance</AppText>
-        <AppText variant="heading" style={styles.sectionTitle}>Make FamilyApp yours</AppText>
+        <AppText variant="heading" style={styles.sectionTitle}>Make Kinzae yours</AppText>
         <AppText variant="body" tone="mutedText" style={styles.sectionIntro}>Choose how bright the app feels, then add a color personality. Changes apply everywhere right away.</AppText>
         <View accessibilityRole="radiogroup" style={styles.appearanceChoices}>
           {(['system', 'light', 'dark'] as const).map((mode) => <AppearanceChoice key={mode} mode={mode} selected={appearance === mode} onPress={() => setAppearance(mode)} />)}
@@ -194,7 +194,7 @@ export default function ProfileScreen() {
             <MemberAvatar member={previewMember} familyId={family.familyId} size={96} />
             <AppText variant="label" style={styles.previewName}>{displayName}</AppText>
             <AppText variant="caption" tone="mutedText">
-              {identity.identityType === 'photo' ? 'Using your profile photo' : identity.identityType === 'avatar' ? 'Using your FamilyApp Avatar' : 'Using initials / default'}
+              {identity.identityType === 'photo' ? 'Using your profile photo' : identity.identityType === 'avatar' ? 'Using your Kinzae Avatar' : 'Using initials / default'}
             </AppText>
           </Card>
 
@@ -208,7 +208,7 @@ export default function ProfileScreen() {
               theme={theme}
             />
             <OptionCard
-              title="FamilyApp Avatar"
+              title="Kinzae Avatar"
               detail="Create a friendly illustrated avatar"
               active={identity.identityType === 'avatar'}
               busy={false}
@@ -318,7 +318,7 @@ function AccountSection({ family, theme }: { family: ReturnType<typeof useCurren
 
   function onDeletePress() {
     confirm(
-      'Delete your FamilyApp account? This signs you out everywhere and cannot be undone. Family content you created stays with your family, no longer linked to your name.',
+      'Delete your Kinzae account? This signs you out everywhere and cannot be undone. Family content you created stays with your family, no longer linked to your name.',
       'Delete account',
       () => confirm(
         'This is permanent. Are you completely sure you want to delete your account?',

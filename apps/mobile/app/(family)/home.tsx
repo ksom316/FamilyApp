@@ -793,7 +793,15 @@ function HomeArtwork({ active, canManage, familyId, familyName, isWide, photoRev
     sunset: { duration: 4100, rotate: 0.25, x: 1, y: -2, scale: 1.025 },
     blossom: { duration: 4500, rotate: 1.1, x: 3, y: -3, scale: 1.014 },
     lavender: { duration: 4700, rotate: -0.45, x: 2, y: -5, scale: 1.016 },
-    midnight: { duration: 5200, rotate: 0.3, x: 2, y: -2, scale: 1.012 }
+    midnight: { duration: 5200, rotate: 0.3, x: 2, y: -2, scale: 1.012 },
+    kinzae: { duration: 3900, rotate: 0.9, x: 2, y: -4, scale: 1.02 },
+    sunshine: { duration: 3600, rotate: 1.2, x: 2, y: -3, scale: 1.024 },
+    kinzaeRose: { duration: 4400, rotate: 0.8, x: 3, y: -4, scale: 1.016 },
+    kinzaeOcean: { duration: 4900, rotate: 0.3, x: 4, y: -5, scale: 1.012 },
+    emerald: { duration: 4500, rotate: -0.6, x: 2, y: -4, scale: 1.014 },
+    aurora: { duration: 5000, rotate: -0.5, x: 3, y: -5, scale: 1.018 },
+    midnightGold: { duration: 5400, rotate: 0.25, x: 1, y: -2, scale: 1.01 },
+    midnightNeon: { duration: 3400, rotate: 1.3, x: 2, y: -3, scale: 1.022 }
   };
   const spec = character[themeName];
 
@@ -851,10 +859,10 @@ function HomeArtwork({ active, canManage, familyId, familyName, isWide, photoRev
   function confirmRemove() {
     if (Platform.OS === 'web') {
       const windowConfirm = (globalThis as typeof globalThis & { confirm?: (text: string) => boolean }).confirm;
-      if (windowConfirm?.('Remove family photo? The colorful FamilyApp artwork will return.')) void doRemove();
+      if (windowConfirm?.('Remove family photo? The colorful Kinzae artwork will return.')) void doRemove();
       return;
     }
-    Alert.alert('Remove family photo?', 'The colorful FamilyApp artwork will return.', [
+    Alert.alert('Remove family photo?', 'The colorful Kinzae artwork will return.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => void doRemove() }
     ]);

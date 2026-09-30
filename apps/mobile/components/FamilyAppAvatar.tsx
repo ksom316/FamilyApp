@@ -69,7 +69,7 @@ export function FamilyAppAvatar({ config, size }: { config: AvatarConfig; size: 
 
   return (
     <View
-      accessibilityLabel="FamilyApp Avatar"
+      accessibilityLabel="Kinzae Avatar"
       style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: BACKGROUND_COLORS[config.background], overflow: 'hidden' }}
     >
       {/* Long-hair side strands sit behind the face */}

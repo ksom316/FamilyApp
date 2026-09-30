@@ -64,7 +64,7 @@ export function FamilyOnboarding({ onComplete }: { onComplete: () => Promise<voi
         <Card elevated style={styles.card}>
           {step === 'choices' ? <>
             <AppText variant="heading">How would you like to begin?</AppText>
-            <AppText variant="body" tone="mutedText" style={styles.cardIntro}>FamilyApp keeps your family space private and close.</AppText>
+            <AppText variant="body" tone="mutedText" style={styles.cardIntro}>Kinzae keeps your family space private and close.</AppText>
             <View style={styles.actions}>
               <Button fullWidth label="Create a Family" onPress={() => choose('create')} />
               <Button fullWidth label="Join" onPress={() => choose('join')} variant="secondary" />

@@ -104,7 +104,7 @@ describe.each([
     expect(entries.every((entry) => entry.familyId === familyId)).toBe(true);
     expect(entries.every((entry) => entry.actorMemberId === actorMemberId)).toBe(true);
     expect(entries.every((entry) => entry.type === type)).toBe(true);
-    expect(entries.every((entry) => entry.title === 'FamilyApp' && entry.message === body)).toBe(true);
+    expect(entries.every((entry) => entry.title === 'Kinzae' && entry.message === body)).toBe(true);
     expect(entries.every((entry) => entry.entityType === 'family_check_in' && entry.entityId === eventId)).toBe(true);
     expect(entries.every((entry) => entry.route === '/(family)/check-ins')).toBe(true);
     expect(entries.map((entry) => entry.dedupeKey).sort()).toEqual([

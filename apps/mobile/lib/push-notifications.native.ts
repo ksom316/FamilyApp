@@ -36,7 +36,7 @@ async function configureAndroidChannels() {
   if (Platform.OS !== 'android') return;
   await Promise.all([
     Notifications.setNotificationChannelAsync('familyapp-default', {
-      name: 'FamilyApp updates',
+      name: 'Kinzae updates',
       description: 'Messages, tasks, calendar events, polls, and time capsules',
       importance: Notifications.AndroidImportance.DEFAULT,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,

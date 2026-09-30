@@ -20,7 +20,7 @@ export function AuthShell({ title, subtitle, children, footer }: { title: string
             <View style={styles.introCopy}>
               <AppText variant="eyebrow" tone="primary">A softer place to land</AppText>
               <AppText variant="display" style={styles.introTitle}>More of life, together.</AppText>
-              <AppText variant="body" tone="mutedText" style={styles.introBody}>FamilyApp gives the people you love a private, thoughtful space to stay close.</AppText>
+              <AppText variant="body" tone="mutedText" style={styles.introBody}>Kinzae gives the people you love a private, thoughtful space to stay close.</AppText>
               <View style={[styles.colorTile, { backgroundColor: theme.primarySoft }]}><View style={[styles.tileDot, { backgroundColor: theme.primary }]} /><View style={[styles.tileDot, styles.tileDotTwo, { backgroundColor: theme.accent }]} /><View style={[styles.tileDot, styles.tileDotThree, { backgroundColor: theme.secondary }]} /></View>
             </View>
           </View>

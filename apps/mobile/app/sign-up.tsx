@@ -33,7 +33,7 @@ export default function SignUpScreen() {
   return (
     <AuthShell
       title="Make room for together"
-      subtitle="Create your private FamilyApp account in a few seconds."
+      subtitle="Create your private Kinzae account in a few seconds."
       footer={(
         <View style={styles.footer}>
           <AppText variant="caption" tone="mutedText">Already have an account?</AppText>

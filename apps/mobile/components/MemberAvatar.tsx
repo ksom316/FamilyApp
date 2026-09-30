@@ -61,7 +61,7 @@ function InitialsCircle({ name, imageUrl, size }: { name?: string | null; imageU
   const { colors: theme } = useAppTheme();
   const initials = initialsFor(name);
   return (
-    <View accessibilityLabel={`${name ?? 'FamilyApp'} avatar`} style={[styles.base, { backgroundColor: theme.primarySoft, borderRadius: size / 2, height: size, width: size }]}>
+    <View accessibilityLabel={`${name ?? 'Kinzae'} avatar`} style={[styles.base, { backgroundColor: theme.primarySoft, borderRadius: size / 2, height: size, width: size }]}>
       {imageUrl ? <Image source={{ uri: imageUrl }} style={{ borderRadius: size / 2, height: size, width: size }} /> : <Text style={[styles.text, { color: theme.primary, fontSize: size * 0.34 }]}>{initials}</Text>}
     </View>
   );

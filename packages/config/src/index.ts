@@ -1,6 +1,15 @@
 export type AppearanceMode = 'system' | 'light' | 'dark';
 export type ResolvedAppearance = Exclude<AppearanceMode, 'system'>;
-export type ThemeName = 'family' | 'ocean' | 'nature' | 'sunset' | 'blossom' | 'lavender' | 'midnight';
+export type ThemeName =
+  | 'family' | 'ocean' | 'nature' | 'sunset' | 'blossom' | 'lavender' | 'midnight'
+  // Kinzae rebrand: additive theme collection. These sit alongside the original seven
+  // (never replacing them) so existing Ocean/Blossom users keep their current look, while
+  // "kinzaeOcean"/"kinzaeRose" cover the same color families with the new, bolder palettes.
+  | 'kinzae' | 'sunshine' | 'kinzaeRose' | 'kinzaeOcean' | 'emerald' | 'aurora' | 'midnightGold' | 'midnightNeon';
+
+export function isAppearanceMode(value: unknown): value is AppearanceMode {
+  return value === 'system' || value === 'light' || value === 'dark';
+}
 
 export type Theme = {
   background: string; backgroundTint: string; surface: string; surfaceSecondary: string; surfaceElevated: string; surfaceRaised: string;
@@ -20,7 +29,14 @@ type Personality = {
   dark: { primary: string; primaryPressed: string; primarySoft: string; secondary: string; secondarySoft: string; accent: string; accentSoft: string };
 };
 
-export const themeNames: readonly ThemeName[] = ['family', 'ocean', 'nature', 'sunset', 'blossom', 'lavender', 'midnight'];
+export const themeNames: readonly ThemeName[] = [
+  'family', 'ocean', 'nature', 'sunset', 'blossom', 'lavender', 'midnight',
+  'kinzae', 'sunshine', 'kinzaeRose', 'kinzaeOcean', 'emerald', 'aurora', 'midnightGold', 'midnightNeon'
+];
+
+export function isThemeName(value: unknown): value is ThemeName {
+  return typeof value === 'string' && (themeNames as readonly string[]).includes(value);
+}
 
 export const themePersonalities: Record<ThemeName, Personality> = {
   family: { label: 'Family', light: { primary: '#C94731', primaryPressed: '#AA3928', primarySoft: '#FFF8F5', secondary: '#4F68CC', secondarySoft: '#FAFBFF', accent: '#C88712', accentSoft: '#FFF2D4' }, dark: { primary: '#F47B5D', primaryPressed: '#FF9A7F', primarySoft: '#492A28', secondary: '#A9B6FF', secondarySoft: '#29304D', accent: '#F7CA6A', accentSoft: '#453A24' } },
@@ -29,7 +45,17 @@ export const themePersonalities: Record<ThemeName, Personality> = {
   sunset: { label: 'Sunset', light: { primary: '#C74649', primaryPressed: '#A9363D', primarySoft: '#FFF8F6', secondary: '#9252A1', secondarySoft: '#F7EFF8', accent: '#C96A19', accentSoft: '#FCEBD8' }, dark: { primary: '#FF8A7A', primaryPressed: '#FFA69A', primarySoft: '#512B2D', secondary: '#D9A0E4', secondarySoft: '#422D48', accent: '#F3AF62', accentSoft: '#4B3421' } },
   blossom: { label: 'Blossom', light: { primary: '#B84E72', primaryPressed: '#963C5C', primarySoft: '#FFF7FA', secondary: '#8C5E8F', secondarySoft: '#F7EFF7', accent: '#B56A3D', accentSoft: '#F8EADF' }, dark: { primary: '#F18BAC', primaryPressed: '#F7AAC1', primarySoft: '#4D2836', secondary: '#D7A2D8', secondarySoft: '#402D42', accent: '#E7A17A', accentSoft: '#493126' } },
   lavender: { label: 'Lavender', light: { primary: '#7558B2', primaryPressed: '#5F4595', primarySoft: '#EEE8FA', secondary: '#4F72B8', secondarySoft: '#F9FAFF', accent: '#A25A88', accentSoft: '#F5E5EF' }, dark: { primary: '#B9A0F0', primaryPressed: '#CDBCF5', primarySoft: '#382D52', secondary: '#94B2ED', secondarySoft: '#293A57', accent: '#E09BC5', accentSoft: '#482E40' } },
-  midnight: { label: 'Midnight', light: { primary: '#384A9B', primaryPressed: '#2B397C', primarySoft: '#E4E8F8', secondary: '#654AA5', secondarySoft: '#ECE7F7', accent: '#7C4F8C', accentSoft: '#F0E5F2' }, dark: { primary: '#91A7FF', primaryPressed: '#AFC0FF', primarySoft: '#27345F', secondary: '#BEA2F3', secondarySoft: '#382E58', accent: '#D79DDB', accentSoft: '#472F4C' } }
+  midnight: { label: 'Midnight', light: { primary: '#384A9B', primaryPressed: '#2B397C', primarySoft: '#E4E8F8', secondary: '#654AA5', secondarySoft: '#ECE7F7', accent: '#7C4F8C', accentSoft: '#F0E5F2' }, dark: { primary: '#91A7FF', primaryPressed: '#AFC0FF', primarySoft: '#27345F', secondary: '#BEA2F3', secondarySoft: '#382E58', accent: '#D79DDB', accentSoft: '#472F4C' } },
+
+  // --- Kinzae additive theme collection (below) ---
+  kinzae: { label: 'Kinzae', light: { primary: '#0A8FD1', primaryPressed: '#086FA8', primarySoft: '#EAF7FE', secondary: '#D63384', secondarySoft: '#FDE9F2', accent: '#12B886', accentSoft: '#E1F8F0' }, dark: { primary: '#4FC3F7', primaryPressed: '#7ED4FA', primarySoft: '#10344A', secondary: '#F783AC', secondarySoft: '#4A2233', accent: '#63E6BE', accentSoft: '#163B30' } },
+  sunshine: { label: 'Sunshine', light: { primary: '#E08A00', primaryPressed: '#B96F00', primarySoft: '#FFF3D6', secondary: '#D9622B', secondarySoft: '#FDEBDF', accent: '#A6790A', accentSoft: '#F7E9C9' }, dark: { primary: '#FFC94D', primaryPressed: '#FFD873', primarySoft: '#4A3510', secondary: '#FF9F5A', secondarySoft: '#4A2C15', accent: '#FFE08A', accentSoft: '#453518' } },
+  kinzaeRose: { label: 'Kinzae Rose', light: { primary: '#C6316B', primaryPressed: '#A11F55', primarySoft: '#FFE9F1', secondary: '#8B4FA0', secondarySoft: '#F3E8F7', accent: '#E0637B', accentSoft: '#FCE5EA' }, dark: { primary: '#FF7FA8', primaryPressed: '#FFA0C0', primarySoft: '#4A1F30', secondary: '#C692DB', secondarySoft: '#3A2745', accent: '#F090A0', accentSoft: '#452430' } },
+  kinzaeOcean: { label: 'Kinzae Ocean', light: { primary: '#0088C2', primaryPressed: '#006A99', primarySoft: '#E1F5FC', secondary: '#2456C9', secondarySoft: '#E6ECFC', accent: '#00A896', accentSoft: '#DAF5F0' }, dark: { primary: '#4FD1F0', primaryPressed: '#7EDEF5', primarySoft: '#0F3A47', secondary: '#6E93FF', secondarySoft: '#1F2C4D', accent: '#4FE3CE', accentSoft: '#133C36' } },
+  emerald: { label: 'Emerald', light: { primary: '#0E8A5F', primaryPressed: '#0B6E4B', primarySoft: '#E2F7EE', secondary: '#5C8A5A', secondarySoft: '#EEF5EA', accent: '#0E9E96', accentSoft: '#DFF6F3' }, dark: { primary: '#4FD69B', primaryPressed: '#79E4B4', primarySoft: '#133A2A', secondary: '#A0CB93', secondarySoft: '#263A24', accent: '#4FE0D4', accentSoft: '#103A36' } },
+  aurora: { label: 'Aurora', light: { primary: '#6E3FCC', primaryPressed: '#5730A6', primarySoft: '#EFE7FC', secondary: '#C13B9B', secondarySoft: '#FAE7F4', accent: '#2F6FE0', accentSoft: '#E3ECFC' }, dark: { primary: '#A98BF5', primaryPressed: '#C1A9FA', primarySoft: '#2E2050', secondary: '#EE8FD4', secondarySoft: '#452038', accent: '#6FA0FF', accentSoft: '#1D2E52' } },
+  midnightGold: { label: 'Midnight Gold', light: { primary: '#C9A227', primaryPressed: '#A9861D', primarySoft: '#2B2412', secondary: '#9C6B3B', secondarySoft: '#2E2416', accent: '#E7C873', accentSoft: '#332A16' }, dark: { primary: '#E8C567', primaryPressed: '#F2D689', primarySoft: '#33290F', secondary: '#C08A54', secondarySoft: '#2E2114', accent: '#F2DFA0', accentSoft: '#362B14' } },
+  midnightNeon: { label: 'Midnight Neon', light: { primary: '#3E8EFF', primaryPressed: '#6AA8FF', primarySoft: '#16233E', secondary: '#9B5CF0', secondarySoft: '#241A3D', accent: '#33E0FF', accentSoft: '#12313A' }, dark: { primary: '#6AB4FF', primaryPressed: '#8FC6FF', primarySoft: '#16273F', secondary: '#C08CFF', secondarySoft: '#2C1F44', accent: '#4DF0FF', accentSoft: '#123640' } }
 };
 
 const surfaces = {
@@ -75,6 +101,46 @@ const themeAtmospheres: Record<ThemeName, Record<ResolvedAppearance, Atmosphere>
   midnight: {
     light: { background: '#F4F6FC', backgroundTint: '#E6EAF7', surface: '#FCFDFF', surfaceSecondary: '#E9EDF7', surfaceElevated: '#FFFFFF', text: '#202943', textSecondary: '#414C69', textMuted: '#66708A', border: '#CFD6E8', borderStrong: '#AAB6D2', divider: '#DDE2F0', inputBackground: '#F8FAFF', inputBorder: '#B9C3DB', placeholder: '#66708A', navigationBackground: '#E8ECF8', navigationInactive: '#606B87', overlay: 'rgba(14, 20, 45, 0.64)', shadow: '#23315B' },
     dark: { background: '#0F1425', backgroundTint: '#171D36', surface: '#171D31', surfaceSecondary: '#1E2540', surfaceElevated: '#252D4B', text: '#F5F7FF', textSecondary: '#DCE2F5', textMuted: '#ADB8D6', border: '#34405F', borderStrong: '#52618A', divider: '#2B3552', inputBackground: '#13192B', inputBorder: '#445276', placeholder: '#96A2C2', navigationBackground: '#12182D', navigationInactive: '#A8B3D2', overlay: 'rgba(3, 5, 13, 0.84)', shadow: '#02030A' }
+  },
+
+  // --- Kinzae additive theme collection (below) ---
+  kinzae: {
+    light: { background: '#F4FBFE', backgroundTint: '#E4F5FC', surface: '#FFFFFF', surfaceSecondary: '#EAF6FB', surfaceElevated: '#FFFFFF', text: '#142A38', textSecondary: '#3B5666', textMuted: '#63808E', border: '#CDE7F2', borderStrong: '#9FC9DC', divider: '#DCEEF6', inputBackground: '#FBFEFF', inputBorder: '#B7D9E8', placeholder: '#63808E', navigationBackground: '#EAF6FC', navigationInactive: '#5C7A88', overlay: 'rgba(8, 32, 44, 0.60)', shadow: '#0F3A4D' },
+    dark: { background: '#081824', backgroundTint: '#0E2331', surface: '#0F2836', surfaceSecondary: '#133040', surfaceElevated: '#183849', text: '#EAF7FD', textSecondary: '#C7E3ED', textMuted: '#98BAC8', border: '#1E4356', borderStrong: '#2E5A70', divider: '#1A3B4C', inputBackground: '#0C202C', inputBorder: '#2C5468', placeholder: '#86ABB9', navigationBackground: '#0B2029', navigationInactive: '#93B5C3', overlay: 'rgba(2, 10, 15, 0.82)', shadow: '#010A0F' }
+  },
+  sunshine: {
+    light: { background: '#FFF6DF', backgroundTint: '#FCEAC0', surface: '#FFFCF2', surfaceSecondary: '#FBEFD2', surfaceElevated: '#FFFFFF', text: '#3B2C0E', textSecondary: '#6B5322', textMuted: '#8C7440', border: '#F0DBA0', borderStrong: '#DEBE68', divider: '#F5E7BE', inputBackground: '#FFFBF0', inputBorder: '#E2C787', placeholder: '#8C7440', navigationBackground: '#FCECC4', navigationInactive: '#8A7238', overlay: 'rgba(59, 44, 14, 0.60)', shadow: '#4A3A12' },
+    dark: { background: '#241A08', backgroundTint: '#33260D', surface: '#2E220C', surfaceSecondary: '#392A0F', surfaceElevated: '#453313', text: '#FFF6DE', textSecondary: '#F0DFAE', textMuted: '#C7AF78', border: '#4E3B16', borderStrong: '#6E541F', divider: '#443410', inputBackground: '#2A1F0A', inputBorder: '#63491B', placeholder: '#B99F65', navigationBackground: '#2A1F0B', navigationInactive: '#C2A96E', overlay: 'rgba(10, 7, 2, 0.82)', shadow: '#0A0701' }
+  },
+  kinzaeRose: {
+    light: { background: '#FFF1F6', backgroundTint: '#FBDFEA', surface: '#FFFBFD', surfaceSecondary: '#FCE7EF', surfaceElevated: '#FFFFFF', text: '#3A1D2A', textSecondary: '#63404F', textMuted: '#8C6C77', border: '#F3CEDE', borderStrong: '#DEA6C0', divider: '#F7DEE8', inputBackground: '#FFFAFC', inputBorder: '#E6B9CE', placeholder: '#8C6C77', navigationBackground: '#FCE4EF', navigationInactive: '#8A6470', overlay: 'rgba(58, 29, 42, 0.60)', shadow: '#5C2A3D' },
+    dark: { background: '#200E17', backgroundTint: '#2E1420', surface: '#2A121D', surfaceSecondary: '#351826', surfaceElevated: '#41202F', text: '#FFF1F7', textSecondary: '#F0D6E1', textMuted: '#C9A3B4', border: '#4A2434', borderStrong: '#6C3549', divider: '#3E1C2B', inputBackground: '#240F1A', inputBorder: '#5E2D41', placeholder: '#B98A9C', navigationBackground: '#240F1B', navigationInactive: '#C193A5', overlay: 'rgba(10, 4, 7, 0.84)', shadow: '#080305' }
+  },
+  kinzaeOcean: {
+    light: { background: '#EAF8FD', backgroundTint: '#D5F0FA', surface: '#FBFEFF', surfaceSecondary: '#E3F3FA', surfaceElevated: '#FFFFFF', text: '#0E2C38', textSecondary: '#345863', textMuted: '#5C7F89', border: '#C4E6F0', borderStrong: '#92CBDD', divider: '#D7EDF5', inputBackground: '#F7FDFF', inputBorder: '#ABD8E7', placeholder: '#5C7F89', navigationBackground: '#E1F2FA', navigationInactive: '#557682', overlay: 'rgba(8, 36, 46, 0.60)', shadow: '#0C3A48' },
+    dark: { background: '#061A22', backgroundTint: '#0B2732', surface: '#0D2A34', surfaceSecondary: '#113340', surfaceElevated: '#163E4C', text: '#E6F7FC', textSecondary: '#C0E1EA', textMuted: '#92B9C4', border: '#1B4350', borderStrong: '#2A5A6A', divider: '#163847', inputBackground: '#091F28', inputBorder: '#275564', placeholder: '#7FA7B4', navigationBackground: '#081C24', navigationInactive: '#89B0BC', overlay: 'rgba(1, 9, 12, 0.84)', shadow: '#010609' }
+  },
+  emerald: {
+    light: { background: '#F0FAF4', backgroundTint: '#DFF3E6', surface: '#FCFFFC', surfaceSecondary: '#E7F5EC', surfaceElevated: '#FFFFFF', text: '#16301F', textSecondary: '#35543F', textMuted: '#5C7A64', border: '#CBE7D5', borderStrong: '#A0CDAF', divider: '#DCEEE1', inputBackground: '#F8FDF9', inputBorder: '#B3DAC0', placeholder: '#5C7A64', navigationBackground: '#E6F5EA', navigationInactive: '#517A5C', overlay: 'rgba(15, 40, 25, 0.60)', shadow: '#1A4A2E' },
+    dark: { background: '#0A1F14', backgroundTint: '#10301F', surface: '#10291A', surfaceSecondary: '#163420', surfaceElevated: '#1C3F28', text: '#EAFBF0', textSecondary: '#C6E6D2', textMuted: '#98BFA6', border: '#204A2E', borderStrong: '#2E6440', divider: '#1C3E26', inputBackground: '#0D2517', inputBorder: '#2C5A3B', placeholder: '#82AC91', navigationBackground: '#0C2417', navigationInactive: '#8FBB9D', overlay: 'rgba(2, 12, 6, 0.84)', shadow: '#010A04' }
+  },
+  aurora: {
+    light: { background: '#F7F3FE', backgroundTint: '#ECE3FB', surface: '#FDFCFF', surfaceSecondary: '#F0E9FA', surfaceElevated: '#FFFFFF', text: '#271B42', textSecondary: '#48396B', textMuted: '#6E5F8C', border: '#DED0F5', borderStrong: '#BCA3E6', divider: '#E7DCF7', inputBackground: '#FAF8FF', inputBorder: '#C7B2EA', placeholder: '#6E5F8C', navigationBackground: '#EFE7FC', navigationInactive: '#6A5C88', overlay: 'rgba(30, 18, 55, 0.62)', shadow: '#34206A' },
+    dark: { background: '#150E26', backgroundTint: '#1F1536', surface: '#1C1332', surfaceSecondary: '#24193F', surfaceElevated: '#2D204D', text: '#F5F0FF', textSecondary: '#DBCEF2', textMuted: '#B4A2D6', border: '#362A54', borderStrong: '#4D3B70', divider: '#2C2145', inputBackground: '#180F2A', inputBorder: '#453569', placeholder: '#9F8CC4', navigationBackground: '#170E28', navigationInactive: '#AD9AD0', overlay: 'rgba(6, 3, 14, 0.86)', shadow: '#030108' }
+  },
+  midnightGold: {
+    // Deliberately dark-charcoal in BOTH appearances — this personality's identity is
+    // "near-black, gold, warm cream" regardless of the light/dark toggle, so it never
+    // collapses into a plain white surface. "light" here means the lighter of the two
+    // charcoals, not an actual light background.
+    light: { background: '#262115', backgroundTint: '#2E2818', surface: '#241F15', surfaceSecondary: '#2C2619', surfaceElevated: '#352E1D', text: '#F5EEDA', textSecondary: '#D8CBA6', textMuted: '#AC9E79', border: '#3A331F', borderStrong: '#52492A', divider: '#2E2919', inputBackground: '#1A1710', inputBorder: '#4A4126', placeholder: '#9C8E6C', navigationBackground: '#18160F', navigationInactive: '#A0906B', overlay: 'rgba(5, 4, 2, 0.70)', shadow: '#000000' },
+    dark: { background: '#0E0C08', backgroundTint: '#17140D', surface: '#151209', surfaceSecondary: '#1B170F', surfaceElevated: '#221D13', text: '#F8F1DC', textSecondary: '#DFD3AE', textMuted: '#B3A47D', border: '#322B18', borderStrong: '#473D22', divider: '#261F13', inputBackground: '#110F08', inputBorder: '#3E3520', placeholder: '#9C8D66', navigationBackground: '#0F0D08', navigationInactive: '#A79862', overlay: 'rgba(2, 2, 1, 0.82)', shadow: '#000000' }
+  },
+  midnightNeon: {
+    // Same reasoning as Midnight Gold: always a deep navy/near-black, with "light" being the
+    // lighter of the two navy depths rather than an actual light surface.
+    light: { background: '#131A2E', backgroundTint: '#1B2540', surface: '#161E36', surfaceSecondary: '#1D2745', surfaceElevated: '#24305A', text: '#EAF1FF', textSecondary: '#C6D3F2', textMuted: '#98A8CE', border: '#2C3B63', borderStrong: '#3F5389', divider: '#232E50', inputBackground: '#161F3B', inputBorder: '#3C4F80', placeholder: '#8C9DC6', navigationBackground: '#141C33', navigationInactive: '#92A2C8', overlay: 'rgba(3, 6, 16, 0.70)', shadow: '#000000' },
+    dark: { background: '#070A16', backgroundTint: '#0D1226', surface: '#0B0F20', surfaceSecondary: '#101528', surfaceElevated: '#161C34', text: '#F0F5FF', textSecondary: '#D2DAF5', textMuted: '#A2AEDA', border: '#212A4C', borderStrong: '#303C68', divider: '#1A2140', inputBackground: '#090D1C', inputBorder: '#2E3A66', placeholder: '#8B96C6', navigationBackground: '#070A18', navigationInactive: '#96A2D2', overlay: 'rgba(1, 2, 8, 0.86)', shadow: '#000000' }
   }
 };
 

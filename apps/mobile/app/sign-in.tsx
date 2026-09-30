@@ -44,7 +44,7 @@ export default function SignInScreen() {
       subtitle="Sign in to return to your family’s private home."
       footer={(
         <View style={styles.footer}>
-          <AppText variant="caption" tone="mutedText">New to FamilyApp?</AppText>
+          <AppText variant="caption" tone="mutedText">New to Kinzae?</AppText>
           <Pressable accessibilityRole="button" onPress={() => router.replace('/sign-up')} style={styles.linkButton}>
             <AppText variant="caption" tone="secondary">Create an account</AppText>
           </Pressable>

@@ -488,7 +488,7 @@ export async function acceptFamilyInvitation(db: Database, userId: string, rawTo
         recipientMemberId,
         actorMemberId: acceptance.memberId,
         type: 'member_joined',
-        title: 'FamilyApp',
+        title: 'Kinzae',
         message: `${joinedMember.displayName} joined ${joinedMember.familyName}`,
         entityType: 'family_member',
         entityId: acceptance.memberId,

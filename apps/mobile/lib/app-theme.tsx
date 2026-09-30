@@ -1,11 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Platform, StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { createTheme, themeNames, type AppearanceMode, type ResolvedAppearance, type Theme, type ThemeName } from '@familyapp/config';
+import { createTheme, isAppearanceMode, isThemeName, type AppearanceMode, type ResolvedAppearance, type Theme, type ThemeName } from '@familyapp/config';
 
 const STORAGE_KEY = 'familyapp.appearance.v1';
 const DEFAULT_APPEARANCE: AppearanceMode = 'system';
-const DEFAULT_THEME: ThemeName = 'family';
+// Kinzae is the new signature theme, so brand-new installs (no stored preference at all) see
+// it by default. Anyone who has ever opened the app before this change already has an
+// explicit theme (including the previous default, 'family') written to storage below, so
+// this can never silently change an existing user's look — see readPreferences/writePreferences.
+const DEFAULT_THEME: ThemeName = 'kinzae';
 
 type PersistedPreferences = { appearance: AppearanceMode; theme: ThemeName };
 type AppThemeValue = PersistedPreferences & {
@@ -18,14 +22,6 @@ type AppThemeValue = PersistedPreferences & {
 
 const AppThemeContext = createContext<AppThemeValue | null>(null);
 
-function isAppearance(value: unknown): value is AppearanceMode {
-  return value === 'system' || value === 'light' || value === 'dark';
-}
-
-function isTheme(value: unknown): value is ThemeName {
-  return typeof value === 'string' && (themeNames as readonly string[]).includes(value);
-}
-
 async function readPreferences(): Promise<PersistedPreferences> {
   try {
     const raw = Platform.OS === 'web'
@@ -34,8 +30,8 @@ async function readPreferences(): Promise<PersistedPreferences> {
     if (!raw) return { appearance: DEFAULT_APPEARANCE, theme: DEFAULT_THEME };
     const parsed = JSON.parse(raw) as Partial<PersistedPreferences>;
     return {
-      appearance: isAppearance(parsed.appearance) ? parsed.appearance : DEFAULT_APPEARANCE,
-      theme: isTheme(parsed.theme) ? parsed.theme : DEFAULT_THEME
+      appearance: isAppearanceMode(parsed.appearance) ? parsed.appearance : DEFAULT_APPEARANCE,
+      theme: isThemeName(parsed.theme) ? parsed.theme : DEFAULT_THEME
     };
   } catch {
     return { appearance: DEFAULT_APPEARANCE, theme: DEFAULT_THEME };

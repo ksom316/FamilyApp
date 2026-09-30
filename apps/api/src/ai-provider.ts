@@ -37,7 +37,7 @@ function createOpenRouterProvider(apiKey: string, model: string): AiProvider {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,
-            'X-Title': 'FamilyApp Family Brain'
+            'X-Title': 'Kinzae Family Brain'
           },
           body: JSON.stringify({
             model,

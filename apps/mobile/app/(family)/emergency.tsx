@@ -100,10 +100,10 @@ export default function EmergencyHubScreen() {
         <AppText variant="eyebrow" tone="danger">Family coordination, not emergency services</AppText>
         <AppText variant="display" style={styles.title}>Emergency Hub</AppText>
         <AppText variant="body" tone="mutedText" style={styles.subtitle}>
-          Alert your family in FamilyApp when something urgent comes up, and see who's seen it.
+          Alert your family in Kinzae when something urgent comes up, and see who's seen it.
         </AppText>
         <AppText variant="caption" tone="mutedText" style={styles.disclaimer}>
-          For immediate danger, contact local emergency services directly. FamilyApp only notifies people inside this app.
+          For immediate danger, contact local emergency services directly. Kinzae only notifies people inside this app.
         </AppText>
       </View>
 

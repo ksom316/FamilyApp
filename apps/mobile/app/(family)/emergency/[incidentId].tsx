@@ -157,7 +157,7 @@ export default function EmergencyDetailScreen() {
         ) : null}
 
         <AppText variant="caption" tone="mutedText" style={styles.disclaimer}>
-          FamilyApp alerts family members only. For immediate danger, contact local emergency services directly.
+          Kinzae alerts family members only. For immediate danger, contact local emergency services directly.
         </AppText>
 
         {actionError ? <AppText variant="caption" tone="danger" style={styles.formError}>{actionError}</AppText> : null}

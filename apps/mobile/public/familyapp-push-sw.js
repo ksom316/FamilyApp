@@ -35,15 +35,15 @@ self.addEventListener('push', (event) => {
   try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
   const route = safeRoute(payload.route);
   event.waitUntil((async () => {
-    await self.registration.showNotification(safeText(payload.title, 'FamilyApp', 140), {
-      body: safeText(payload.body, 'Open FamilyApp to see what is new.', 300),
+    await self.registration.showNotification(safeText(payload.title, 'Kinzae', 140), {
+      body: safeText(payload.body, 'Open Kinzae to see what is new.', 300),
       icon: '/familyapp-icon-192.png',
       badge: '/familyapp-maskable-512.png',
       data: { route, workerVersion: WORKER_VERSION }
     });
     // Visible only in service-worker developer tools; contains no message or
     // subscription data and distinguishes an old worker from this fixed version.
-    console.info('FamilyApp Web Push displayed', { workerVersion: WORKER_VERSION });
+    console.info('Kinzae Web Push displayed', { workerVersion: WORKER_VERSION });
   })());
 });
 

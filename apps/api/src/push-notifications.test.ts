@@ -165,7 +165,7 @@ describe('safe push payload construction', () => {
       const safetyNotification = {
         ...notification,
         type,
-        title: 'FamilyApp',
+        title: 'Kinzae',
         message: body,
         entityType: 'family_check_in',
         route: '/(family)/check-ins'
@@ -173,9 +173,9 @@ describe('safe push payload construction', () => {
       const native = buildSafePushMessage(safetyNotification, 'ExpoPushToken[abc_123-XYZ]');
       const web = buildSafeWebPushPayload(safetyNotification);
       expect(shouldSendNativePush(type)).toBe(true);
-      expect(native).toMatchObject({ title: 'FamilyApp', body });
+      expect(native).toMatchObject({ title: 'Kinzae', body });
       expect(native?.data.route).toBe('/(family)/check-ins');
-      expect(web).toMatchObject({ title: 'FamilyApp', body, route: '/check-ins' });
+      expect(web).toMatchObject({ title: 'Kinzae', body, route: '/check-ins' });
       expect(JSON.stringify({ native, web })).not.toMatch(/latitude|longitude|coordinates|maps?\./i);
     }
   });
@@ -236,7 +236,7 @@ describe('safe push payload construction', () => {
     const joined = {
       ...notification,
       type: 'member_joined',
-      title: 'FamilyApp',
+      title: 'Kinzae',
       message: 'Ama joined The African Family',
       entityType: 'family_member',
       route: '/(family)/family'
@@ -264,7 +264,7 @@ describe('safe push payload construction', () => {
     }, 'ExpoPushToken[abc_123-XYZ]');
     expect(message).toMatchObject({
       title: 'Family membership updated',
-      body: 'Open FamilyApp to review a change to your family membership.'
+      body: 'Open Kinzae to review a change to your family membership.'
     });
     expect(message?.body).not.toContain('sensitive');
     expect(readPushDestination(message?.data)).toMatchObject({ route: '/', type: 'member_removed' });
@@ -353,7 +353,7 @@ describe('safe push payload construction', () => {
     await dispatch('activate');
     await dispatch('push', { title: 'Ama', body: 'Message A', route: '/chat/family' });
     await dispatch('push', { title: 'Ama', body: 'Message B', route: '/chat/family' });
-    await dispatch('push', { title: 'FamilyApp', body: 'Kwaku has arrived safely.', route: '/check-ins' });
+    await dispatch('push', { title: 'Kinzae', body: 'Kwaku has arrived safely.', route: '/check-ins' });
 
     expect(skipWaiting).toHaveBeenCalledOnce();
     expect(claim).toHaveBeenCalledOnce();
@@ -361,7 +361,7 @@ describe('safe push payload construction', () => {
     expect(displayed.map(({ title, options }) => ({ title, body: options.body }))).toEqual([
       { title: 'Ama', body: 'Message A' },
       { title: 'Ama', body: 'Message B' },
-      { title: 'FamilyApp', body: 'Kwaku has arrived safely.' }
+      { title: 'Kinzae', body: 'Kwaku has arrived safely.' }
     ]);
     expect(displayed[2]?.options.data).toMatchObject({ route: '/check-ins', workerVersion: '2026-09-27.3' });
     for (const { options } of displayed) {

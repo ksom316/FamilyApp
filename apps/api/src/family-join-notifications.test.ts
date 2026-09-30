@@ -69,7 +69,7 @@ describe('family invitation acceptance notifications', () => {
     expect(entries.every((entry) => entry.familyId === familyId)).toBe(true);
     expect(entries.every((entry) => entry.actorMemberId === joiningMemberId)).toBe(true);
     expect(entries.every((entry) => entry.type === 'member_joined')).toBe(true);
-    expect(entries.every((entry) => entry.title === 'FamilyApp')).toBe(true);
+    expect(entries.every((entry) => entry.title === 'Kinzae')).toBe(true);
     expect(entries.every((entry) => entry.message === 'Ama joined The African Family')).toBe(true);
     expect(entries.map((entry) => entry.dedupeKey).sort()).toEqual([
       `member_joined:${invitationId}:${existingMemberA}`,

@@ -11,10 +11,10 @@ import { Card } from './Card';
 const copy: Record<WebPushStatus, string> = {
   checking: 'Checking browser notification support…',
   unsupported: 'Browser notifications are not available here, or the public notification key has not been configured.',
-  'needs-install': 'On iPhone or iPad, add FamilyApp to your Home Screen first, then open the installed app to enable notifications.',
-  'not-enabled': 'Get timely FamilyApp alerts even when this page is closed.',
+  'needs-install': 'On iPhone or iPad, add Kinzae to your Home Screen first, then open the installed app to enable notifications.',
+  'not-enabled': 'Get timely Kinzae alerts even when this page is closed.',
   enabled: 'Browser notifications are enabled on this device.',
-  denied: 'Notifications are blocked for FamilyApp. You can allow them in your browser or device settings.',
+  denied: 'Notifications are blocked for Kinzae. You can allow them in your browser or device settings.',
   error: 'Browser notifications could not be updated. Check your connection and try again.'
 };
 
