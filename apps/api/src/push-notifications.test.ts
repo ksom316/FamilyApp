@@ -128,6 +128,19 @@ describe('safe push payload construction', () => {
     expect(message?.data).not.toHaveProperty('token');
   });
 
+  it('keeps the new task deadline/reminder lifecycle notification types eligible for native and Web Push', () => {
+    for (const [type, route] of [
+      ['task_missed', '/(family)/tasks/44444444-4444-4444-8444-444444444444'],
+      ['task_completed', '/(family)/tasks/44444444-4444-4444-8444-444444444444'],
+      ['calendar_event_upcoming', '/(family)/calendar']
+    ] as const) {
+      const lifecycleNotification = { ...notification, type, title: `"Weekly review" ${type}`, route };
+      expect(shouldSendNativePush(type)).toBe(true);
+      expect(buildSafePushMessage(lifecycleNotification, 'ExpoPushToken[abc_123-XYZ]')).not.toBeNull();
+      expect(buildSafeWebPushPayload(lifecycleNotification)).not.toBeNull();
+    }
+  });
+
   it('does not push intentionally excluded low-value notification types', () => {
     expect(shouldSendNativePush('shopping_list_created')).toBe(false);
     expect(buildSafePushMessage({ ...notification, type: 'shopping_list_created' }, 'ExpoPushToken[abc]')).toBeNull();

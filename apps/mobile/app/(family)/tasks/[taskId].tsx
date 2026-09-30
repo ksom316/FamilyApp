@@ -145,6 +145,9 @@ export default function TaskDetailScreen() {
     );
   }
 
+  const isTaskOverdue = Boolean(task.dueAt) && new Date(task.dueAt as string).getTime() <= Date.now() && task.completedAssignees < task.totalAssignees;
+  const canToggleCompletion = Boolean(task.myCompletedAt) || task.myStatus !== 'overdue';
+
   if (editing) {
     return (
       <Screen scroll maxWidth={720} contentStyle={styles.content}>
@@ -179,7 +182,11 @@ export default function TaskDetailScreen() {
         </View>
 
         {task.description ? <AppText variant="body" style={styles.description}>{task.description}</AppText> : null}
-        {task.dueAt ? <AppText variant="caption" tone="mutedText" style={styles.dueText}>Due {formatDateTime(task.dueAt)}</AppText> : null}
+        {task.dueAt ? (
+          <AppText variant="caption" tone={isTaskOverdue ? 'danger' : 'mutedText'} style={styles.dueText}>
+            {isTaskOverdue ? 'Overdue · ' : 'Due '}{formatDateTime(task.dueAt)}
+          </AppText>
+        ) : null}
 
         <AppText variant="caption" tone="mutedText" style={styles.progressText}>
           {task.completedAssignees} of {task.totalAssignees} completed
@@ -193,7 +200,7 @@ export default function TaskDetailScreen() {
 
         {actionError ? <AppText variant="caption" tone="danger" style={styles.formError}>{actionError}</AppText> : null}
 
-        {task.isAssignedToMe ? (
+        {task.isAssignedToMe && canToggleCompletion ? (
           <Button
             label={task.myCompletedAt ? 'Mark as not done' : 'Mark as done'}
             variant={task.myCompletedAt ? 'secondary' : 'primary'}
@@ -201,6 +208,10 @@ export default function TaskDetailScreen() {
             onPress={() => void toggleCompletion()}
             style={styles.completeButton}
           />
+        ) : task.isAssignedToMe ? (
+          <AppText variant="caption" tone="danger" style={styles.completeButton}>
+            The deadline has passed, so this can no longer be marked complete.
+          </AppText>
         ) : null}
 
         {task.isCreator ? (
@@ -222,8 +233,8 @@ export default function TaskDetailScreen() {
               <MemberAvatar member={assignee} familyId={family.familyId} size={36} />
               <View style={styles.detailCopy}>
                 <AppText variant="label">{assignee.displayName}</AppText>
-                <AppText variant="caption" tone={assignee.completedAt ? 'success' : 'mutedText'}>
-                  {assignee.completedAt ? `Completed ${formatDateTime(assignee.completedAt)}` : 'Pending'}
+                <AppText variant="caption" tone={assignee.completedAt ? 'success' : assignee.status === 'overdue' ? 'danger' : 'mutedText'}>
+                  {assignee.completedAt ? `Completed ${formatDateTime(assignee.completedAt)}` : assignee.status === 'overdue' ? 'Overdue' : 'Pending'}
                 </AppText>
               </View>
             </View>

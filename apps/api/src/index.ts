@@ -2174,7 +2174,7 @@ app.patch('/families/:familyId/chores/:taskId/completion', sessionMiddleware, as
     const task = await setChoreCompletion(createApiDatabase(c.env), session.user.id, c.req.param('familyId'), c.req.param('taskId'), body.completed);
     return c.json({ task });
   } catch (error) {
-    if (error instanceof FamilyServiceError || error instanceof ChoreServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404);
+    if (error instanceof FamilyServiceError || error instanceof ChoreServiceError) return c.json({ error: error.message, code: error.code }, error.status as 400 | 403 | 404 | 409);
     throw error;
   }
 });

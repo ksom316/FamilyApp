@@ -24,7 +24,17 @@ export type ChoreErrorCode =
   | 'forbidden_audience'
   | 'chore_not_found'
   | 'forbidden_chore_action'
-  | 'not_assigned';
+  | 'not_assigned'
+  | 'deadline_passed';
+
+export type ChoreStatus = 'pending' | 'completed' | 'overdue';
+
+/** Derived, never stored: a task's lifecycle state is always computed from dueAt/completedAt. */
+export function deriveChoreStatus(dueAt: Date | null, completedAt: Date | null, now = new Date()): ChoreStatus {
+  if (completedAt) return 'completed';
+  if (dueAt && dueAt.getTime() <= now.getTime()) return 'overdue';
+  return 'pending';
+}
 
 export class ChoreServiceError extends Error {
   constructor(public readonly code: ChoreErrorCode, message: string, public readonly status = 400) {
@@ -234,7 +244,8 @@ async function summarizeChores(db: Database, memberId: string, rows: ChoreRow[])
       totalAssignees: count?.total ?? 0,
       completedAssignees: count?.completed ?? 0,
       isAssignedToMe: myAssignments.has(row.id),
-      myCompletedAt
+      myCompletedAt,
+      myStatus: myAssignments.has(row.id) ? deriveChoreStatus(row.dueAt, myCompletedAt) : null
     };
   });
 }
@@ -394,11 +405,12 @@ export async function getChore(db: Database, userId: string, familyId: string, c
     createdBy: chore.createdBy,
     isCreator: chore.createdByMemberId === membership.id,
     audience: audienceSummary(chore),
-    assignees,
+    assignees: assignees.map((assignee) => ({ ...assignee, status: deriveChoreStatus(chore.dueAt, assignee.completedAt) })),
     totalAssignees: assignees.length,
     completedAssignees: assignees.filter((assignee) => assignee.completedAt).length,
     isAssignedToMe: Boolean(mine),
-    myCompletedAt: mine?.completedAt ?? null
+    myCompletedAt: mine?.completedAt ?? null,
+    myStatus: mine ? deriveChoreStatus(chore.dueAt, mine.completedAt) : null
   };
 }
 
@@ -525,6 +537,27 @@ export async function setChoreCompletion(db: Database, userId: string, familyId:
   assertUuid(choreId);
   if (typeof completed !== 'boolean') throw new ChoreServiceError('invalid_chore', 'Choose whether this task is complete.');
   const membership = await requireFamilyMembership(db, userId, familyId);
+
+  // The deadline check reads the current row first rather than trusting a blind UPDATE,
+  // so a past-deadline completion attempt is rejected here — the server, not just the UI's
+  // hidden Complete button — and an already-completed assignment can still be un-completed
+  // (or re-completed as a no-op) after its deadline without tripping this guard.
+  if (completed) {
+    const [current] = await db
+      .select({ completedAt: familyChoreAssignments.completedAt, dueAt: familyChores.dueAt })
+      .from(familyChoreAssignments)
+      .innerJoin(familyChores, and(eq(familyChoreAssignments.choreId, familyChores.id), eq(familyChoreAssignments.familyId, familyChores.familyId)))
+      .where(and(
+        eq(familyChoreAssignments.choreId, choreId),
+        eq(familyChoreAssignments.familyId, familyId),
+        eq(familyChoreAssignments.memberId, membership.id)
+      ))
+      .limit(1);
+    if (!current) throw new ChoreServiceError('not_assigned', 'That task could not be found.', 404);
+    if (!current.completedAt && current.dueAt && current.dueAt.getTime() <= Date.now()) {
+      throw new ChoreServiceError('deadline_passed', 'This task’s deadline has passed, so it can no longer be marked complete.', 409);
+    }
+  }
 
   const updated = await db
     .update(familyChoreAssignments)

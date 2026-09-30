@@ -14,6 +14,8 @@ export type TaskAudience =
   | { type: 'household'; household: { id: string; name: string } }
   | { type: 'members' };
 
+export type TaskStatus = 'pending' | 'completed' | 'overdue';
+
 export type TaskSummary = {
   id: string;
   familyId: string;
@@ -28,9 +30,10 @@ export type TaskSummary = {
   completedAssignees: number;
   isAssignedToMe: boolean;
   myCompletedAt: string | null;
+  myStatus: TaskStatus | null;
 };
 
-export type TaskAssignee = TaskPerson & { completedAt: string | null };
+export type TaskAssignee = TaskPerson & { completedAt: string | null; status: TaskStatus };
 
 export type TaskDetail = {
   id: string;
@@ -48,6 +51,7 @@ export type TaskDetail = {
   completedAssignees: number;
   isAssignedToMe: boolean;
   myCompletedAt: string | null;
+  myStatus: TaskStatus | null;
 };
 
 type BaseTaskInput = { title: string; description?: string | null; dueAt?: string | null };

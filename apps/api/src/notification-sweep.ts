@@ -19,6 +19,7 @@ import { createNotifications, type NotificationInput } from './notifications-ser
 
 const DUE_SOON_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CLOSING_SOON_WINDOW_MS = 24 * 60 * 60 * 1000;
+const EVENT_UPCOMING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function dayBounds(now: Date) {
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -103,7 +104,9 @@ async function sweepPlanTasks(db: Database, familyId: string, memberId: string, 
 }
 
 export async function runAllNotificationSweeps(db: Database) {
-  const members = await db.select({ familyId: familyMembers.familyId, memberId: familyMembers.id }).from(familyMembers);
+  const members = await db.select({ familyId: familyMembers.familyId, memberId: familyMembers.id })
+    .from(familyMembers)
+    .where(isNull(familyMembers.leftAt));
   const batchSize = 20;
   for (let index = 0; index < members.length; index += batchSize) {
     await Promise.allSettled(members.slice(index, index + batchSize).map((member) =>
@@ -112,9 +115,16 @@ export async function runAllNotificationSweeps(db: Database) {
   }
 }
 
+// Scoped to one assignee's own assignments (memberId), but a "missed deadline" notification
+// for the task's CREATOR is also emitted from here — the only sweep pass that ever looks at
+// "did assignee X finish their part of chore C" is the one run for X, so this is the one
+// place that can discover the fact and tell the creator about it. createNotifications is
+// keyed by the recipient on each entry, not by which member's sweep produced it, and the
+// creator-facing dedupeKey is stable regardless of which member's sweep (or the global cron)
+// happens to insert it first, so this is safe to run redundantly from any angle.
 async function sweepChores(db: Database, familyId: string, memberId: string, now: Date): Promise<NotificationInput[]> {
   const rows = await db
-    .select({ choreId: familyChoreAssignments.choreId, title: familyChores.title, dueAt: familyChores.dueAt })
+    .select({ choreId: familyChoreAssignments.choreId, title: familyChores.title, dueAt: familyChores.dueAt, createdByMemberId: familyChores.createdByMemberId })
     .from(familyChoreAssignments)
     .innerJoin(familyChores, and(eq(familyChoreAssignments.choreId, familyChores.id), eq(familyChoreAssignments.familyId, familyChores.familyId)))
     .where(and(
@@ -138,6 +148,20 @@ async function sweepChores(db: Database, familyId: string, memberId: string, now
         route: `/(family)/tasks/${row.choreId}`,
         dedupeKey: `task:${row.choreId}:overdue:${dueDateKey}:${memberId}`
       });
+      // Skip the creator when they're also the assignee — they've just been told once above,
+      // and don't need to be told a second time that they missed their own task.
+      if (row.createdByMemberId !== memberId) {
+        entries.push({
+          familyId,
+          recipientMemberId: row.createdByMemberId,
+          type: 'task_missed',
+          title: `A task you assigned is overdue: "${row.title}"`,
+          entityType: 'chore',
+          entityId: row.choreId,
+          route: `/(family)/tasks/${row.choreId}`,
+          dedupeKey: `task:${row.choreId}:missed:${dueDateKey}:${memberId}:${row.createdByMemberId}`
+        });
+      }
     } else if (row.dueAt.getTime() - now.getTime() <= DUE_SOON_WINDOW_MS) {
       entries.push({
         familyId,
@@ -156,12 +180,22 @@ async function sweepChores(db: Database, familyId: string, memberId: string, now
 
 async function sweepCalendar(db: Database, familyId: string, memberId: string, now: Date): Promise<NotificationInput[]> {
   const { start, end, dateKey } = dayBounds(now);
-  const rows = await selectVisibleCalendarRows(db, familyId, memberId, and(
-    gte(familyCalendarEvents.startsAt, start),
-    lte(familyCalendarEvents.startsAt, end)
-  )!);
+  const [todayRows, upcomingRows] = await Promise.all([
+    selectVisibleCalendarRows(db, familyId, memberId, and(
+      gte(familyCalendarEvents.startsAt, start),
+      lte(familyCalendarEvents.startsAt, end)
+    )!),
+    // A separate, earlier heads-up: anything starting within the next 24 hours. The
+    // dedupeKey is scoped to the event's exact startsAt (not a date bucket), so it fires
+    // exactly once per schedule — and a later reschedule naturally starts a fresh dedupe
+    // series instead of silently reusing (or colliding with) the old time's key.
+    selectVisibleCalendarRows(db, familyId, memberId, and(
+      gte(familyCalendarEvents.startsAt, now),
+      lte(familyCalendarEvents.startsAt, new Date(now.getTime() + EVENT_UPCOMING_WINDOW_MS))
+    )!)
+  ]);
 
-  return rows.map((row) => ({
+  const entries: NotificationInput[] = todayRows.map((row) => ({
     familyId,
     recipientMemberId: memberId,
     type: 'calendar_event_today',
@@ -172,6 +206,22 @@ async function sweepCalendar(db: Database, familyId: string, memberId: string, n
     route: '/(family)/calendar',
     dedupeKey: `event:${row.id}:today:${dateKey}:${memberId}`
   }));
+
+  for (const row of upcomingRows) {
+    entries.push({
+      familyId,
+      recipientMemberId: memberId,
+      type: 'calendar_event_upcoming',
+      title: `"${row.title}" is coming up`,
+      message: row.allDay ? 'All day' : row.startsAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+      entityType: 'calendar_event',
+      entityId: row.id,
+      route: '/(family)/calendar',
+      dedupeKey: `event:${row.id}:upcoming:${row.startsAt.toISOString()}:${memberId}`
+    });
+  }
+
+  return entries;
 }
 
 async function sweepPolls(db: Database, familyId: string, memberId: string, now: Date): Promise<NotificationInput[]> {

@@ -172,6 +172,10 @@ export default function TasksScreen() {
                     <View style={[styles.progressBadge, { backgroundColor: theme.successSoft }]}>
                       <AppText variant="caption" tone="success">Done</AppText>
                     </View>
+                  ) : task.myStatus === 'overdue' ? (
+                    <View style={[styles.progressBadge, { backgroundColor: theme.dangerSoft }]}>
+                      <AppText variant="caption" tone="danger">Overdue</AppText>
+                    </View>
                   ) : null}
                 </View>
               </Card>
