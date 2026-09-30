@@ -9,3 +9,5 @@ crons = ["*/15 * * * *"]
 [vars]
 AUTH_CROSS_SITE_COOKIES = "false"
 AUTH_TRUSTED_ORIGINS = "https://family-app-api-swart.vercel.app"
+
+OPENROUTER_MODEL = "openrouter/free"
