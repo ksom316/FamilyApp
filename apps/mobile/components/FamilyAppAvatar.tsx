@@ -2,7 +2,10 @@ import { View, type ViewStyle } from 'react-native';
 
 import type { AvatarConfig } from '../lib/profile';
 
-const BACKGROUND_COLORS: Record<AvatarConfig['background'], string> = {
+// Exported so customization UI (the avatar editor) can render genuine color swatches
+// from the exact same palette the renderer draws with, instead of a second, hand-copied
+// set of hex values that could silently drift out of sync with how the avatar actually looks.
+export const BACKGROUND_COLORS: Record<AvatarConfig['background'], string> = {
   peach: '#FFE0C2',
   sky: '#CFE8FF',
   mint: '#D3F5E4',
@@ -10,14 +13,14 @@ const BACKGROUND_COLORS: Record<AvatarConfig['background'], string> = {
   sun: '#FFF3B0'
 };
 
-const SKIN_COLORS: Record<AvatarConfig['skinTone'], string> = {
+export const SKIN_COLORS: Record<AvatarConfig['skinTone'], string> = {
   light: '#FCE0C2',
   medium: '#E8B98C',
   tan: '#C98A5B',
   deep: '#8B5A3C'
 };
 
-const HAIR_COLORS: Record<AvatarConfig['hairColor'], string> = {
+export const HAIR_COLORS: Record<AvatarConfig['hairColor'], string> = {
   black: '#2B2320',
   brown: '#6B4A32',
   blonde: '#D8B26B',

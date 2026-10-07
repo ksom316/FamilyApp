@@ -1,17 +1,17 @@
 import { useAppTheme } from '../../lib/app-theme';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { createTheme, radius, spacing, themeNames, themePersonalities, type AppearanceMode, type Theme, type ThemeName } from '@familyapp/config';
+import { createTheme, radius, shadows, spacing, themeNames, themePersonalities, type AppearanceMode, type Theme, type ThemeName } from '@familyapp/config';
 
 import { AccountApiError, deleteMyAccount } from '../../lib/account';
 import { AppText } from '../../components/AppText';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
-import { FamilyAppAvatar } from '../../components/FamilyAppAvatar';
+import { BACKGROUND_COLORS, FamilyAppAvatar, HAIR_COLORS, SKIN_COLORS } from '../../components/FamilyAppAvatar';
 import { MemberAvatar } from '../../components/MemberAvatar';
-import { FadeInView, PressableScale } from '../../components/Motion';
+import { FadeInView, PressableScale, SuccessPulse } from '../../components/Motion';
 import { Screen } from '../../components/Screen';
 import { useCurrentFamily } from '../../lib/family-context';
 import { FamilyApiError, getFamilyMembers, leaveFamily, transferFamilyOwnership, type FamilyMember } from '../../lib/families';
@@ -51,6 +51,37 @@ const OPTION_LABELS: Record<string, string> = {
   peach: 'Peach', sky: 'Sky', mint: 'Mint', lilac: 'Lilac', sun: 'Sun'
 };
 
+// Categories whose options are fundamentally a color choice get a plain color swatch;
+// everything else (hairstyle, expression, accessory, top) gets a real mini avatar preview
+// so the shape/style is actually visible rather than implied by a text label alone.
+const COLOR_CATEGORIES = new Set<keyof AvatarConfig>(['skinTone', 'hairColor', 'background']);
+const CATEGORY_ORDER = Object.keys(AVATAR_OPTIONS) as (keyof AvatarConfig)[];
+const HERO_AVATAR_SIZE = 176;
+const OPTION_PREVIEW_SIZE = 56;
+
+function randomAvatarConfig(): AvatarConfig {
+  const pick = <K extends keyof AvatarConfig>(key: K): AvatarConfig[K] => {
+    const options = AVATAR_OPTIONS[key];
+    return options[Math.floor(Math.random() * options.length)];
+  };
+  return {
+    skinTone: pick('skinTone'),
+    hairstyle: pick('hairstyle'),
+    hairColor: pick('hairColor'),
+    expression: pick('expression'),
+    accessory: pick('accessory'),
+    top: pick('top'),
+    background: pick('background')
+  };
+}
+
+function swatchColorFor(category: keyof AvatarConfig, option: string) {
+  if (category === 'skinTone') return SKIN_COLORS[option as AvatarConfig['skinTone']];
+  if (category === 'hairColor') return HAIR_COLORS[option as AvatarConfig['hairColor']];
+  if (category === 'background') return BACKGROUND_COLORS[option as AvatarConfig['background']];
+  return undefined;
+}
+
 export default function ProfileScreen() {
   const family = useCurrentFamily();
   const { data: session } = useAuth();
@@ -62,6 +93,10 @@ export default function ProfileScreen() {
   const [draftConfig, setDraftConfig] = useState<AvatarConfig>(DEFAULT_AVATAR_CONFIG);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [justSavedAvatar, setJustSavedAvatar] = useState(false);
+  const savedBannerTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (savedBannerTimeout.current) clearTimeout(savedBannerTimeout.current); }, []);
 
   const load = useCallback(async () => {
     try {
@@ -85,6 +120,7 @@ export default function ProfileScreen() {
   } : null;
 
   function beginAvatarEdit() {
+    setJustSavedAvatar(false);
     setDraftConfig(identity?.avatarConfig ?? DEFAULT_AVATAR_CONFIG);
     setEditingAvatar(true);
   }
@@ -95,6 +131,9 @@ export default function ProfileScreen() {
     try {
       setIdentity(await setMyIdentity('avatar', draftConfig));
       setEditingAvatar(false);
+      setJustSavedAvatar(true);
+      if (savedBannerTimeout.current) clearTimeout(savedBannerTimeout.current);
+      savedBannerTimeout.current = setTimeout(() => setJustSavedAvatar(false), 2400);
       requestAttentionRefresh();
     } catch (caught) {
       setError(caught instanceof ProfileApiError ? caught.message : 'Your avatar could not be saved.');
@@ -196,6 +235,11 @@ export default function ProfileScreen() {
             <AppText variant="caption" tone="mutedText">
               {identity.identityType === 'photo' ? 'Using your profile photo' : identity.identityType === 'avatar' ? 'Using your Kinzae Avatar' : 'Using initials / default'}
             </AppText>
+            {justSavedAvatar && identity.identityType === 'avatar' ? (
+              <SuccessPulse style={styles.savedConfirmation}>
+                <AppText variant="caption" tone="success">&#10003; Avatar saved</AppText>
+              </SuccessPulse>
+            ) : null}
           </Card>
 
           <View style={styles.optionsGrid}>
@@ -437,30 +481,70 @@ function AvatarEditor({ config, onChange, saving, onCancel, onSave }: {
   onCancel: () => void;
   onSave: () => void;
 }) {
+  const { colors: theme } = useAppTheme();
+  const [activeCategory, setActiveCategory] = useState<keyof AvatarConfig>(CATEGORY_ORDER[0]);
+
   function setOption<K extends keyof AvatarConfig>(key: K, value: AvatarConfig[K]) {
     onChange({ ...config, [key]: value });
   }
 
   return (
     <Card elevated style={styles.editorCard}>
-      <View style={styles.editorPreview}>
-        <FamilyAppAvatar config={config} size={112} />
-      </View>
-      {(Object.keys(AVATAR_OPTIONS) as (keyof AvatarConfig)[]).map((category) => (
-        <View key={category} style={styles.categoryRow}>
-          <AppText variant="label" style={styles.categoryLabel}>{CATEGORY_LABELS[category]}</AppText>
-          <View style={styles.optionChips}>
-            {AVATAR_OPTIONS[category].map((option) => (
-              <OptionChip
-                key={option}
-                label={OPTION_LABELS[option] ?? option}
-                selected={config[category] === option}
-                onPress={() => setOption(category, option as AvatarConfig[typeof category])}
-              />
-            ))}
-          </View>
+      <AppText variant="eyebrow" tone="primary">Create your avatar</AppText>
+      <AppText variant="heading" style={styles.editorTitle}>Make it unmistakably you</AppText>
+      <AppText variant="body" tone="mutedText" style={styles.editorIntro}>Pick a category below and tap an option — your avatar updates instantly.</AppText>
+
+      <View style={styles.avatarStage}>
+        <View style={[styles.avatarStageGlow, { backgroundColor: theme.surfaceSecondary }]} />
+        <View style={[styles.avatarShadowWrap, shadows.lg, { shadowColor: theme.shadow, borderRadius: HERO_AVATAR_SIZE / 2 }]}>
+          <FamilyAppAvatar config={config} size={HERO_AVATAR_SIZE} />
         </View>
-      ))}
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Surprise me with a random avatar"
+        onPress={() => onChange(randomAvatarConfig())}
+        disabled={saving}
+        style={[styles.surpriseButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+      >
+        <AppText variant="label" tone="secondary">&#8635; Surprise me</AppText>
+      </Pressable>
+
+      <View style={[styles.sectionDivider, { backgroundColor: theme.divider }]} />
+
+      <AppText variant="eyebrow" tone="secondary" style={styles.categoryHeading}>Customize</AppText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabs}>
+        {CATEGORY_ORDER.map((category) => {
+          const active = activeCategory === category;
+          return (
+            <Pressable
+              key={category}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              onPress={() => setActiveCategory(category)}
+              style={[styles.categoryTab, { backgroundColor: active ? theme.primarySoft : theme.input, borderColor: active ? theme.primary : theme.border }]}
+            >
+              <AppText variant="label" tone={active ? 'primary' : 'text'}>{CATEGORY_LABELS[category]}</AppText>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <FadeInView key={activeCategory} distance={4} style={styles.avatarOptionsGrid}>
+        {AVATAR_OPTIONS[activeCategory].map((option) => (
+          <AvatarOptionTile
+            key={option}
+            category={activeCategory}
+            option={option}
+            config={config}
+            selected={config[activeCategory] === option}
+            onPress={() => setOption(activeCategory, option as AvatarConfig[typeof activeCategory])}
+          />
+        ))}
+      </FadeInView>
+
+      <View style={[styles.sectionDivider, { backgroundColor: theme.divider }]} />
       <View style={styles.formActions}>
         <Button label="Cancel" variant="quiet" onPress={onCancel} disabled={saving} />
         <Button label="Save avatar" loading={saving} onPress={onSave} />
@@ -469,11 +553,38 @@ function AvatarEditor({ config, onChange, saving, onCancel, onSave }: {
   );
 }
 
-function OptionChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+function AvatarOptionTile({ category, option, config, selected, onPress }: {
+  category: keyof AvatarConfig;
+  option: string;
+  config: AvatarConfig;
+  selected: boolean;
+  onPress: () => void;
+}) {
   const { colors: theme } = useAppTheme();
+  const label = OPTION_LABELS[option] ?? option;
+  const swatchColor = swatchColorFor(category, option);
+
   return (
-    <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.chip, { backgroundColor: selected ? theme.primarySoft : theme.input, borderColor: selected ? theme.primary : theme.border }]}>
-      <AppText variant="caption" tone={selected ? 'primary' : 'text'}>{label}</AppText>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${CATEGORY_LABELS[category]}: ${label}`}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={styles.avatarOptionTile}
+    >
+      <View style={[styles.avatarOptionSwatch, { borderColor: selected ? theme.primary : theme.border, borderWidth: selected ? 3 : 1 }]}>
+        {swatchColor ? (
+          <View style={[styles.colorSwatchFill, { backgroundColor: swatchColor }]} />
+        ) : (
+          <FamilyAppAvatar config={{ ...config, [category]: option } as AvatarConfig} size={OPTION_PREVIEW_SIZE} />
+        )}
+        {selected ? (
+          <View style={[styles.optionSelectedMark, { backgroundColor: theme.primary, borderColor: theme.surface }]}>
+            <AppText variant="caption" style={{ color: theme.onPrimary }}>&#10003;</AppText>
+          </View>
+        ) : null}
+      </View>
+      <AppText variant="caption" tone={selected ? 'primary' : 'mutedText'} numberOfLines={1} style={styles.avatarOptionLabel}>{label}</AppText>
     </Pressable>
   );
 }
@@ -524,10 +635,45 @@ const styles = StyleSheet.create({
   optionActive: { marginTop: spacing.sm },
   removeButton: { alignSelf: 'flex-start', marginTop: spacing.lg },
   editorCard: { marginTop: spacing.xl, padding: spacing.xl },
-  editorPreview: { alignItems: 'center', marginBottom: spacing.lg },
-  categoryRow: { marginTop: spacing.md },
-  categoryLabel: { marginBottom: spacing.xs },
-  optionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: { borderRadius: radius.pill, borderWidth: 1, minHeight: 36, justifyContent: 'center', paddingHorizontal: spacing.md },
+  editorTitle: { marginTop: spacing.xs },
+  editorIntro: { marginTop: spacing.sm, maxWidth: 480 },
+  avatarStage: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xl,
+    marginBottom: spacing.lg,
+    width: HERO_AVATAR_SIZE + 64,
+    height: HERO_AVATAR_SIZE + 64
+  },
+  avatarStageGlow: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: (HERO_AVATAR_SIZE + 64) / 2 },
+  avatarShadowWrap: { alignSelf: 'center' },
+  surpriseButton: { alignSelf: 'center', borderRadius: radius.pill, borderWidth: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg },
+  categoryHeading: { marginTop: spacing.md },
+  categoryTabs: { gap: spacing.sm, paddingVertical: spacing.sm },
+  categoryTab: { borderRadius: radius.pill, borderWidth: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
+  avatarOptionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.sm },
+  avatarOptionTile: { alignItems: 'center', gap: spacing.xs, width: 78 },
+  avatarOptionSwatch: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: OPTION_PREVIEW_SIZE + 8,
+    height: OPTION_PREVIEW_SIZE + 8,
+    borderRadius: (OPTION_PREVIEW_SIZE + 8) / 2
+  },
+  colorSwatchFill: { width: OPTION_PREVIEW_SIZE, height: OPTION_PREVIEW_SIZE, borderRadius: OPTION_PREVIEW_SIZE / 2 },
+  optionSelectedMark: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2
+  },
+  avatarOptionLabel: { textAlign: 'center' },
+  savedConfirmation: { marginTop: spacing.xs },
   formActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', marginTop: spacing.xl }
 });
