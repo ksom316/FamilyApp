@@ -100,16 +100,36 @@ export function FamilyAppAvatar({ config, size }: { config: AvatarConfig; size: 
   const mouthWidth = size * 0.15;
   const mouthTop = headTop + headSize * 0.68;
 
+  // Grin is a small filled open-mouth shape (plus a hint of teeth) rather than the old wide,
+  // deeply-curved stroke — that old version got wide and curved enough to read as a
+  // villain-mask grin and could reach toward the glasses. A filled shape also guarantees
+  // grin reads as visibly different from smile (a thin line) at a glance, not just "a bit
+  // bigger", while staying compact and low in the face.
+  const grinWidth = mouthWidth * 1.12;
+  const grinHeight = size * 0.062;
+  const toothWidth = grinWidth * 0.62;
+  const toothHeight = grinHeight * 0.4;
+
   const mouthStyle: ViewStyle = config.expression === 'neutral'
     ? { width: mouthWidth, height: Math.max(1, size * 0.02), backgroundColor: DARK, borderRadius: 2 }
-    : {
-      width: config.expression === 'grin' ? mouthWidth * 1.3 : mouthWidth,
-      height: config.expression === 'grin' ? size * 0.09 : size * 0.06,
-      borderBottomWidth: Math.max(1.5, size * 0.03),
-      borderColor: DARK,
-      borderBottomLeftRadius: mouthWidth,
-      borderBottomRightRadius: mouthWidth
-    };
+    : config.expression === 'grin'
+      ? {
+        width: grinWidth,
+        height: grinHeight,
+        backgroundColor: DARK,
+        borderTopLeftRadius: grinHeight * 0.35,
+        borderTopRightRadius: grinHeight * 0.35,
+        borderBottomLeftRadius: grinHeight * 0.9,
+        borderBottomRightRadius: grinHeight * 0.9
+      }
+      : {
+        width: mouthWidth,
+        height: size * 0.06,
+        borderBottomWidth: Math.max(1.5, size * 0.03),
+        borderColor: DARK,
+        borderBottomLeftRadius: mouthWidth,
+        borderBottomRightRadius: mouthWidth
+      };
 
   return (
     <View
@@ -155,11 +175,15 @@ export function FamilyAppAvatar({ config, size }: { config: AvatarConfig; size: 
       <Eyebrow size={eyeSize} width={browWidth} color={hairColor} style={{ position: 'absolute', top: browTop, left: size / 2 + eyeGap / 2 - browWidth / 2 }} />
 
       <View style={{ position: 'absolute', top: eyesTop, left: size / 2 - eyeGap / 2 - eyeSize / 2, flexDirection: 'row', gap: eyeGap - eyeSize }}>
-        <Eye size={eyeSize} closed={config.expression === 'wink'} />
+        <Eye size={eyeSize} closed={config.expression === 'wink'} compact={config.expression === 'wink' && config.accessory !== 'none'} />
         <Eye size={eyeSize} closed={false} />
       </View>
 
-      <View style={[{ position: 'absolute', top: mouthTop, left: size / 2 - mouthWidth / 2 }, mouthStyle]} />
+      <View style={[{ position: 'absolute', top: mouthTop, left: size / 2 - (config.expression === 'grin' ? grinWidth : mouthWidth) / 2 }, mouthStyle]}>
+        {config.expression === 'grin' ? (
+          <View style={{ position: 'absolute', top: grinHeight * 0.16, left: (grinWidth - toothWidth) / 2, width: toothWidth, height: toothHeight, borderRadius: toothHeight * 0.4, backgroundColor: '#FFFFFF' }} />
+        ) : null}
+      </View>
 
       {!isTiny && config.accessory !== 'none' ? (
         <Accessory size={size} eyesTop={eyesTop} eyeSize={eyeSize} eyeGap={eyeGap} filled={config.accessory === 'sunglasses'} />
@@ -168,8 +192,15 @@ export function FamilyAppAvatar({ config, size }: { config: AvatarConfig; size: 
   );
 }
 
-function Eye({ size, closed }: { size: number; closed: boolean }) {
-  return <View style={{ width: closed ? size * 1.6 : size, height: closed ? size * 0.5 : size, borderRadius: size, backgroundColor: DARK }} />;
+// `compact` is a small, local-only adjustment used when a wink lands under active glasses/
+// sunglasses: a narrower, thinner line lifted slightly up keeps it clearly inside the lens
+// with room to spare, instead of risking a visual merge with the lens's lower frame edge.
+// It never changes anything when there's no accessory, and never touches the open eye.
+function Eye({ size, closed, compact = false }: { size: number; closed: boolean; compact?: boolean }) {
+  if (!closed) return <View style={{ width: size, height: size, borderRadius: size, backgroundColor: DARK }} />;
+  const width = compact ? size * 1.35 : size * 1.6;
+  const height = compact ? size * 0.36 : size * 0.5;
+  return <View style={{ width, height, borderRadius: size, backgroundColor: DARK, marginTop: compact ? -size * 0.14 : 0 }} />;
 }
 
 function Eyebrow({ size, width, color, style }: { size: number; width: number; color: string; style: ViewStyle }) {
