@@ -38,26 +38,63 @@ const TOP_COLORS: Record<AvatarConfig['top'], string> = {
 const DARK = '#2B2320';
 
 /**
- * FamilyApp's own small, illustrated avatar system — built entirely from plain View
- * primitives (circles/rects via borderRadius, never an image or SVG), so it renders
- * identically on web and native with zero extra dependencies and no external assets.
- * Deterministic: the same AvatarConfig always produces the same picture. Every layer below
- * is positioned absolutely, directly inside the one circular root container, using offsets
- * computed from `size` alone — never nested relative to another absolutely-positioned
- * layer, which keeps the math simple and predictable.
+ * Kinzae's own illustrated avatar system — built entirely from plain View primitives
+ * (circles/rects via borderRadius, rotation, and the zero-size/colored-border "CSS
+ * triangle" trick, never an image or SVG), so it renders identically on web and native
+ * with zero extra dependencies and no external assets. Deterministic: the same
+ * AvatarConfig always produces the same picture.
+ *
+ * Composition is a head-and-shoulders bust, not a head-only disc: every measurement is a
+ * fraction of `size` computed once below (never a hardcoded pixel), so the same proportions
+ * hold at any render size — a small chat avatar and a large editor preview are the same
+ * picture, just scaled. The outer frame stays a circle (matching the photo/initials
+ * avatars this component stands in for elsewhere in the app); the head sits in its upper,
+ * naturally-narrower region while the shoulders flare to fill the circle's wider lower
+ * region, the same way most apps draw a default "person" avatar.
+ *
+ * Render order (back to front): background → back hair (long hair's strands, which pass
+ * behind the shoulders) → neck → torso/clothing → head → front hair → eyebrows → eyes →
+ * mouth → accessories. Hairstyles share one "crown" shape as their base (short, long, and
+ * bun all start from it) so hair reads as one wrapped silhouette instead of a disconnected
+ * block, and the crown/neck/torso all key off the same head measurements so nothing can
+ * drift out of alignment independently.
  */
 export function FamilyAppAvatar({ config, size }: { config: AvatarConfig; size: number }) {
   const isTiny = size < 32;
-  const faceSize = size * 0.56;
-  const faceTop = size * 0.16;
-  const faceLeft = (size - faceSize) / 2;
-  const eyeSize = Math.max(1.5, size * 0.045);
-  const eyeGap = eyeSize * 2.4;
-  const eyesTop = faceTop + faceSize * 0.42;
-  const mouthWidth = size * 0.16;
-  const mouthTop = faceTop + faceSize * 0.64;
-
   const hairColor = HAIR_COLORS[config.hairColor];
+  const skinColor = SKIN_COLORS[config.skinTone];
+  const topColor = TOP_COLORS[config.top];
+
+  // Head
+  const headSize = size * 0.5;
+  const headCenterY = size * 0.38;
+  const headTop = headCenterY - headSize / 2;
+  const headLeft = (size - headSize) / 2;
+  const headBottom = headTop + headSize;
+
+  // Neck + shoulders/torso — the torso is a full-width, rounded-top "dome" that the
+  // circular frame naturally clips into a shoulder curve, so it never needs its own
+  // special-cased corner math per option.
+  const neckWidth = size * 0.24;
+  const neckTop = headBottom - size * 0.05;
+  const neckLeft = (size - neckWidth) / 2;
+  const torsoTop = neckTop + size * 0.11;
+  const torsoRadius = size * 0.3;
+
+  // Crown (shared hair base for short/long/bun)
+  const crownWidth = headSize * 1.1;
+  const crownHeight = headSize * 0.62;
+  const crownTop = headTop - headSize * 0.08;
+  const crownLeft = (size - crownWidth) / 2;
+
+  // Face features
+  const eyeSize = Math.max(1.5, size * 0.044);
+  const eyeGap = eyeSize * 2.7;
+  const eyesTop = headTop + headSize * 0.47;
+  const browWidth = eyeSize * 1.9;
+  const browTop = eyesTop - eyeSize * 1.5;
+  const mouthWidth = size * 0.15;
+  const mouthTop = headTop + headSize * 0.68;
 
   const mouthStyle: ViewStyle = config.expression === 'neutral'
     ? { width: mouthWidth, height: Math.max(1, size * 0.02), backgroundColor: DARK, borderRadius: 2 }
@@ -75,72 +112,54 @@ export function FamilyAppAvatar({ config, size }: { config: AvatarConfig; size: 
       accessibilityLabel="Kinzae Avatar"
       style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: BACKGROUND_COLORS[config.background], overflow: 'hidden' }}
     >
-      {/* Long-hair side strands sit behind the face */}
       {config.hairstyle === 'long' ? (
-        <>
-          <View style={{ position: 'absolute', top: faceTop, left: faceLeft - faceSize * 0.08, width: faceSize * 0.22, height: faceSize * 0.95, borderRadius: faceSize * 0.12, backgroundColor: hairColor }} />
-          <View style={{ position: 'absolute', top: faceTop, left: faceLeft + faceSize - faceSize * 0.14, width: faceSize * 0.22, height: faceSize * 0.95, borderRadius: faceSize * 0.12, backgroundColor: hairColor }} />
-        </>
+        <LongHairBack size={size} headTop={headTop} headLeft={headLeft} headSize={headSize} hairColor={hairColor} />
       ) : null}
 
-      {/* Face */}
-      <View style={{ position: 'absolute', top: faceTop, left: faceLeft, width: faceSize, height: faceSize, borderRadius: faceSize / 2, backgroundColor: SKIN_COLORS[config.skinTone] }} />
+      <View style={{ position: 'absolute', top: neckTop, left: neckLeft, width: neckWidth, height: size - neckTop, backgroundColor: skinColor }} />
 
-      {/* Eyes */}
+      <View
+        style={{
+          position: 'absolute',
+          top: torsoTop,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: topColor,
+          borderTopLeftRadius: torsoRadius,
+          borderTopRightRadius: torsoRadius
+        }}
+      />
+      <ClothingDetail top={config.top} size={size} torsoTop={torsoTop} neckWidth={neckWidth} skinColor={skinColor} topColor={topColor} />
+
+      <View style={{ position: 'absolute', top: headTop, left: headLeft, width: headSize, height: headSize, borderRadius: headSize / 2, backgroundColor: skinColor }} />
+
+      <HairFront
+        hairstyle={config.hairstyle}
+        hairColor={hairColor}
+        size={size}
+        headTop={headTop}
+        headLeft={headLeft}
+        headSize={headSize}
+        crownTop={crownTop}
+        crownLeft={crownLeft}
+        crownWidth={crownWidth}
+        crownHeight={crownHeight}
+      />
+
+      <Eyebrow size={eyeSize} width={browWidth} color={hairColor} style={{ position: 'absolute', top: browTop, left: size / 2 - eyeGap / 2 - browWidth / 2 }} />
+      <Eyebrow size={eyeSize} width={browWidth} color={hairColor} style={{ position: 'absolute', top: browTop, left: size / 2 + eyeGap / 2 - browWidth / 2 }} />
+
       <View style={{ position: 'absolute', top: eyesTop, left: size / 2 - eyeGap / 2 - eyeSize / 2, flexDirection: 'row', gap: eyeGap - eyeSize }}>
         <Eye size={eyeSize} closed={config.expression === 'wink'} />
         <Eye size={eyeSize} closed={false} />
       </View>
 
-      {/* Mouth */}
       <View style={[{ position: 'absolute', top: mouthTop, left: size / 2 - mouthWidth / 2 }, mouthStyle]} />
 
-      {/* Accessory (glasses), skipped at very small sizes where it would just look muddy */}
       {!isTiny && config.accessory !== 'none' ? (
-        <Accessory
-          size={size}
-          left={size / 2 - eyeGap / 2 - size * 0.065}
-          top={eyesTop - size * 0.03}
-          filled={config.accessory === 'sunglasses'}
-        />
+        <Accessory size={size} eyesTop={eyesTop} eyeSize={eyeSize} eyeGap={eyeGap} filled={config.accessory === 'sunglasses'} />
       ) : null}
-
-      {/* Hairstyle cap, drawn on top of the face's hairline */}
-      {config.hairstyle !== 'bald' ? (
-        <View style={{
-          position: 'absolute',
-          top: faceTop - faceSize * 0.16,
-          left: faceLeft - (config.hairstyle === 'long' ? faceSize * 0.04 : 0),
-          width: faceSize * (config.hairstyle === 'long' ? 1.08 : 1),
-          height: faceSize * 0.4,
-          borderRadius: faceSize * 0.5,
-          backgroundColor: hairColor
-        }}
-        />
-      ) : null}
-      {config.hairstyle === 'bun' ? (
-        <View style={{ position: 'absolute', top: faceTop - faceSize * 0.3, left: size / 2 - size * 0.07, width: size * 0.14, height: size * 0.14, borderRadius: size * 0.07, backgroundColor: hairColor }} />
-      ) : null}
-      {config.hairstyle === 'curly' ? (
-        <View style={{ position: 'absolute', top: faceTop - faceSize * 0.24, left: faceLeft + faceSize * 0.08, flexDirection: 'row', gap: size * 0.02 }}>
-          {[0, 1, 2].map((index) => (
-            <View key={index} style={{ width: size * 0.13, height: size * 0.13, borderRadius: size * 0.065, backgroundColor: hairColor }} />
-          ))}
-        </View>
-      ) : null}
-
-      {/* Shoulders/clothing */}
-      <View style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: size * 0.36,
-        backgroundColor: TOP_COLORS[config.top],
-        borderTopLeftRadius: size * 0.32,
-        borderTopRightRadius: size * 0.32
-      }}
-      />
     </View>
   );
 }
@@ -149,20 +168,241 @@ function Eye({ size, closed }: { size: number; closed: boolean }) {
   return <View style={{ width: closed ? size * 1.6 : size, height: closed ? size * 0.5 : size, borderRadius: size, backgroundColor: DARK }} />;
 }
 
-function Accessory({ size, left, top, filled }: { size: number; left: number; top: number; filled: boolean }) {
-  const lensSize = size * 0.13;
+function Eyebrow({ size, width, color, style }: { size: number; width: number; color: string; style: ViewStyle }) {
+  const height = Math.max(1, size * 0.4);
+  return <View style={[style, { width, height, borderRadius: height, backgroundColor: color }]} />;
+}
+
+/** The zero-size/colored-border trick: a transparent box whose one solid border edge
+ * renders as a flat-bottomed triangle. Used for shirt-collar points and the dress V-neck,
+ * so clothing detail never needs real vector/path support. */
+function Triangle({ size, color, style }: { size: number; color: string; style: ViewStyle }) {
+  return (
+    <View
+      style={[
+        style,
+        {
+          width: 0,
+          height: 0,
+          borderLeftWidth: size / 2,
+          borderRightWidth: size / 2,
+          borderTopWidth: size,
+          borderLeftColor: 'transparent',
+          borderRightColor: 'transparent',
+          borderTopColor: color
+        }
+      ]}
+    />
+  );
+}
+
+function Accessory({ size, eyesTop, eyeSize, eyeGap, filled }: { size: number; eyesTop: number; eyeSize: number; eyeGap: number; filled: boolean }) {
+  const lensSize = size * 0.16;
+  const eyeCenterY = eyesTop + eyeSize / 2;
+  const lensTop = eyeCenterY - lensSize / 2;
+  const leftCenterX = size / 2 - eyeGap / 2;
+  const rightCenterX = size / 2 + eyeGap / 2;
+  const bridgeWidth = eyeGap - lensSize;
+  const armWidth = size * 0.07;
+  const armHeight = Math.max(1, size * 0.015);
   const lensStyle: ViewStyle = {
+    position: 'absolute',
+    top: lensTop,
     width: lensSize,
     height: lensSize,
     borderRadius: lensSize / 2,
-    borderWidth: filled ? 0 : Math.max(1, size * 0.015),
+    borderWidth: filled ? 0 : Math.max(1, size * 0.016),
     borderColor: DARK,
     backgroundColor: filled ? DARK : 'transparent'
   };
   return (
-    <View style={{ position: 'absolute', top, left, flexDirection: 'row', alignItems: 'center', gap: size * 0.06 }}>
-      <View style={lensStyle} />
-      <View style={lensStyle} />
-    </View>
+    <>
+      {/* Bridge, connecting the two lenses across the nose */}
+      <View style={{ position: 'absolute', top: eyeCenterY - armHeight / 2, left: leftCenterX + lensSize / 2, width: Math.max(0, bridgeWidth), height: armHeight, backgroundColor: DARK }} />
+      {/* Temple arms, so the glasses read as attached to the head rather than floating */}
+      <View style={{ position: 'absolute', top: eyeCenterY - armHeight / 2, left: leftCenterX - lensSize / 2 - armWidth, width: armWidth, height: armHeight, backgroundColor: DARK }} />
+      <View style={{ position: 'absolute', top: eyeCenterY - armHeight / 2, left: rightCenterX + lensSize / 2, width: armWidth, height: armHeight, backgroundColor: DARK }} />
+      <View style={[lensStyle, { left: leftCenterX - lensSize / 2 }]} />
+      <View style={[lensStyle, { left: rightCenterX - lensSize / 2 }]} />
+    </>
   );
+}
+
+function LongHairBack({ size, headTop, headLeft, headSize, hairColor }: { size: number; headTop: number; headLeft: number; headSize: number; hairColor: string }) {
+  // Two-segment strands (a wider upper piece near the temple, a narrower lower piece
+  // trailing toward the shoulder) so each side tapers instead of reading as a straight bar.
+  const upperWidth = headSize * 0.3;
+  const upperHeight = headSize * 0.6;
+  const upperTop = headTop + headSize * 0.22;
+  const lowerWidth = headSize * 0.2;
+  const lowerHeight = size * 0.26;
+  const lowerTop = upperTop + upperHeight - headSize * 0.08;
+
+  const side = (fromLeftEdge: boolean) => {
+    const upperLeft = fromLeftEdge ? headLeft - upperWidth * 0.32 : headLeft + headSize - upperWidth * 0.68;
+    const lowerLeft = fromLeftEdge ? headLeft - lowerWidth * 0.1 : headLeft + headSize - lowerWidth * 0.9;
+    return [
+      <View key={`${fromLeftEdge ? 'left' : 'right'}-upper`} style={{ position: 'absolute', top: upperTop, left: upperLeft, width: upperWidth, height: upperHeight, borderRadius: upperWidth / 2, backgroundColor: hairColor }} />,
+      <View key={`${fromLeftEdge ? 'left' : 'right'}-lower`} style={{ position: 'absolute', top: lowerTop, left: lowerLeft, width: lowerWidth, height: lowerHeight, borderRadius: lowerWidth / 2, backgroundColor: hairColor }} />
+    ];
+  };
+
+  return <>{side(true)}{side(false)}</>;
+}
+
+function HairFront({ hairstyle, hairColor, size, headTop, headLeft, headSize, crownTop, crownLeft, crownWidth, crownHeight }: {
+  hairstyle: AvatarConfig['hairstyle'];
+  hairColor: string;
+  size: number;
+  headTop: number;
+  headLeft: number;
+  headSize: number;
+  crownTop: number;
+  crownLeft: number;
+  crownWidth: number;
+  crownHeight: number;
+}) {
+  if (hairstyle === 'bald') return null;
+
+  // Every non-bald style shares this crown: it wraps the top of the head with a domed top
+  // edge and a gently flared bottom edge (a little wider at the "sideburns" than at the
+  // ears), which is what fixes the old floating-rectangle look — hair now has a silhouette
+  // that actually follows the head instead of sitting arbitrarily above it.
+  const crown = (
+    <View
+      style={{
+        position: 'absolute',
+        top: crownTop,
+        left: crownLeft,
+        width: crownWidth,
+        height: crownHeight,
+        borderTopLeftRadius: crownWidth / 2,
+        borderTopRightRadius: crownWidth / 2,
+        borderBottomLeftRadius: crownWidth * 0.16,
+        borderBottomRightRadius: crownWidth * 0.16,
+        backgroundColor: hairColor
+      }}
+    />
+  );
+
+  if (hairstyle === 'short') return crown;
+
+  if (hairstyle === 'long') {
+    // The crown alone, without the back strands (those are drawn earlier, behind the
+    // torso) — this is just the top-of-head coverage long hair still needs.
+    return crown;
+  }
+
+  if (hairstyle === 'bun') {
+    const bunSize = size * 0.15;
+    return (
+      <>
+        {crown}
+        <View
+          style={{
+            position: 'absolute',
+            top: crownTop - bunSize * 0.42,
+            left: size / 2 - bunSize / 2,
+            width: bunSize,
+            height: bunSize,
+            borderRadius: bunSize / 2,
+            backgroundColor: hairColor
+          }}
+        />
+      </>
+    );
+  }
+
+  // Curly: a cluster of circles arranged around the head's upper arc (not stacked above
+  // it), so curls read as hair wrapping the head rather than three balls floating on top.
+  const curlSize = headSize * 0.32;
+  const curlRadius = headSize / 2 + curlSize * 0.22;
+  const centerX = headLeft + headSize / 2;
+  const centerY = headTop + headSize * 0.42;
+  const angles = [200, 240, 270, 300, 340];
+  return (
+    <>
+      {angles.map((angleDeg) => {
+        const angle = (angleDeg * Math.PI) / 180;
+        const cx = centerX + curlRadius * Math.cos(angle);
+        const cy = centerY + curlRadius * Math.sin(angle) * 0.82;
+        return (
+          <View
+            key={angleDeg}
+            style={{
+              position: 'absolute',
+              top: cy - curlSize / 2,
+              left: cx - curlSize / 2,
+              width: curlSize,
+              height: curlSize,
+              borderRadius: curlSize / 2,
+              backgroundColor: hairColor
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function ClothingDetail({ top, size, torsoTop, neckWidth, skinColor, topColor }: {
+  top: AvatarConfig['top'];
+  size: number;
+  torsoTop: number;
+  neckWidth: number;
+  skinColor: string;
+  topColor: string;
+}) {
+  const centerX = size / 2;
+
+  if (top === 'hoodie') {
+    const collarWidth = neckWidth * 2.1;
+    const collarHeight = size * 0.07;
+    const stringWidth = Math.max(1, size * 0.013);
+    const stringHeight = size * 0.07;
+    return (
+      <>
+        <View
+          style={{
+            position: 'absolute',
+            top: torsoTop - collarHeight * 0.4,
+            left: centerX - collarWidth / 2,
+            width: collarWidth,
+            height: collarHeight,
+            borderRadius: collarHeight / 2,
+            backgroundColor: topColor
+          }}
+        />
+        <View style={{ position: 'absolute', top: torsoTop + collarHeight * 0.3, left: centerX - stringWidth * 2.5, width: stringWidth, height: stringHeight, borderRadius: stringWidth, backgroundColor: DARK }} />
+        <View style={{ position: 'absolute', top: torsoTop + collarHeight * 0.3, left: centerX + stringWidth * 1.5, width: stringWidth, height: stringHeight, borderRadius: stringWidth, backgroundColor: DARK }} />
+      </>
+    );
+  }
+
+  if (top === 'dress') {
+    // A V-neckline notch, cut from the same skin tone as the face/neck so it reads as
+    // visible skin at the collarbone rather than a background-colored hole.
+    const notchSize = neckWidth * 0.95;
+    return <Triangle size={notchSize} color={skinColor} style={{ position: 'absolute', top: torsoTop - notchSize * 0.08, left: centerX - notchSize / 2 }} />;
+  }
+
+  if (top === 'buttonup') {
+    const pointSize = neckWidth * 0.62;
+    return (
+      <>
+        <Triangle
+          size={pointSize}
+          color={topColor}
+          style={{ position: 'absolute', top: torsoTop - pointSize * 0.12, left: centerX - neckWidth * 0.62, transform: [{ rotate: '34deg' }] }}
+        />
+        <Triangle
+          size={pointSize}
+          color={topColor}
+          style={{ position: 'absolute', top: torsoTop - pointSize * 0.12, left: centerX + neckWidth * 0.02, transform: [{ rotate: '-34deg' }] }}
+        />
+      </>
+    );
+  }
+
+  return null;
 }
