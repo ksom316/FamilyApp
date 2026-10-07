@@ -8,6 +8,7 @@
     "db:generate": "corepack pnpm --filter @familyapp/db generate",
     "db:migrate": "corepack pnpm --filter @familyapp/db migrate",
     "typecheck": "corepack pnpm -r typecheck",
-    "lint": "corepack pnpm -r lint"
+    "lint": "corepack pnpm -r lint",
+    "build:android:preview": "corepack pnpm --filter @familyapp/mobile exec eas build --profile preview --platform android"
   }
 }
