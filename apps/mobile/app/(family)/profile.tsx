@@ -1,9 +1,9 @@
 import { useAppTheme } from '../../lib/app-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { createTheme, radius, shadows, spacing, themeNames, themePersonalities, type AppearanceMode, type Theme, type ThemeName } from '@familyapp/config';
+import { createTheme, radius, shadows, spacing, themeNames, themePersonalities, typography, type AppearanceMode, type Theme, type ThemeName } from '@familyapp/config';
 
 import { AccountApiError, deleteMyAccount } from '../../lib/account';
 import { AppText } from '../../components/AppText';
@@ -495,7 +495,7 @@ function AvatarEditor({ config, onChange, saving, onCancel, onSave }: {
       <AppText variant="body" tone="mutedText" style={styles.editorIntro}>Pick a category below and tap an option — your avatar updates instantly.</AppText>
 
       <View style={styles.avatarStage}>
-        <View style={[styles.avatarStageGlow, { backgroundColor: theme.surfaceSecondary }]} />
+        <View style={[styles.avatarStageGlow, { backgroundColor: theme.primarySoft, borderColor: theme.border }]} />
         <View style={[styles.avatarShadowWrap, shadows.lg, { shadowColor: theme.shadow, borderRadius: HERO_AVATAR_SIZE / 2 }]}>
           <FamilyAppAvatar config={config} size={HERO_AVATAR_SIZE} />
         </View>
@@ -514,7 +514,7 @@ function AvatarEditor({ config, onChange, saving, onCancel, onSave }: {
       <View style={[styles.sectionDivider, { backgroundColor: theme.divider }]} />
 
       <AppText variant="eyebrow" tone="secondary" style={styles.categoryHeading}>Customize</AppText>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabs}>
+      <View style={styles.categoryTabs}>
         {CATEGORY_ORDER.map((category) => {
           const active = activeCategory === category;
           return (
@@ -523,13 +523,15 @@ function AvatarEditor({ config, onChange, saving, onCancel, onSave }: {
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               onPress={() => setActiveCategory(category)}
-              style={[styles.categoryTab, { backgroundColor: active ? theme.primarySoft : theme.input, borderColor: active ? theme.primary : theme.border }]}
+              style={[styles.categoryTab, active ? { backgroundColor: theme.primary } : { backgroundColor: theme.surfaceSecondary, borderColor: theme.border, borderWidth: 1 }]}
             >
-              <AppText variant="label" tone={active ? 'primary' : 'text'}>{CATEGORY_LABELS[category]}</AppText>
+              <AppText variant="label" style={{ color: active ? theme.onPrimary : theme.textSecondary, fontWeight: active ? typography.weight.bold : typography.weight.medium }}>
+                {CATEGORY_LABELS[category]}
+              </AppText>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
 
       <FadeInView key={activeCategory} distance={4} style={styles.avatarOptionsGrid}>
         {AVATAR_OPTIONS[activeCategory].map((option) => (
@@ -646,14 +648,14 @@ const styles = StyleSheet.create({
     width: HERO_AVATAR_SIZE + 64,
     height: HERO_AVATAR_SIZE + 64
   },
-  avatarStageGlow: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: (HERO_AVATAR_SIZE + 64) / 2 },
+  avatarStageGlow: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: (HERO_AVATAR_SIZE + 64) / 2, borderWidth: 1 },
   avatarShadowWrap: { alignSelf: 'center' },
   surpriseButton: { alignSelf: 'center', borderRadius: radius.pill, borderWidth: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg },
   categoryHeading: { marginTop: spacing.md },
-  categoryTabs: { gap: spacing.sm, paddingVertical: spacing.sm },
-  categoryTab: { borderRadius: radius.pill, borderWidth: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
+  categoryTabs: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingVertical: spacing.sm },
+  categoryTab: { borderRadius: radius.pill, minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.md, flexBasis: '31%', flexGrow: 1, minWidth: 96 },
   avatarOptionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.sm },
-  avatarOptionTile: { alignItems: 'center', gap: spacing.xs, width: 78 },
+  avatarOptionTile: { alignItems: 'center', gap: spacing.xs, flexBasis: '28%', flexGrow: 1, minWidth: 84 },
   avatarOptionSwatch: {
     alignItems: 'center',
     justifyContent: 'center',

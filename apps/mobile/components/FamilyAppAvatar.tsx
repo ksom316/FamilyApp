@@ -81,17 +81,21 @@ export function FamilyAppAvatar({ config, size }: { config: AvatarConfig; size: 
   const torsoTop = neckTop + size * 0.11;
   const torsoRadius = size * 0.3;
 
-  // Crown (shared hair base for short/long/bun)
+  // Crown (shared hair base for short/long/bun). Its height is deliberately capped well
+  // short of the eyebrow line (computed below) — this is the single fix for hair clipping
+  // through eyebrows/eyes/glasses on every hairstyle that uses it, rather than a per-style
+  // patch: short hair, long hair's crown, and bun's crown all stop above the face instead
+  // of each needing their own clipping fix.
   const crownWidth = headSize * 1.1;
-  const crownHeight = headSize * 0.62;
+  const crownHeight = headSize * 0.38;
   const crownTop = headTop - headSize * 0.08;
   const crownLeft = (size - crownWidth) / 2;
 
   // Face features
   const eyeSize = Math.max(1.5, size * 0.044);
-  const eyeGap = eyeSize * 2.7;
+  const eyeGap = eyeSize * 3.0;
   const eyesTop = headTop + headSize * 0.47;
-  const browWidth = eyeSize * 1.9;
+  const browWidth = eyeSize * 2.0;
   const browTop = eyesTop - eyeSize * 1.5;
   const mouthWidth = size * 0.15;
   const mouthTop = headTop + headSize * 0.68;
@@ -197,7 +201,11 @@ function Triangle({ size, color, style }: { size: number; color: string; style: 
 }
 
 function Accessory({ size, eyesTop, eyeSize, eyeGap, filled }: { size: number; eyesTop: number; eyeSize: number; eyeGap: number; filled: boolean }) {
-  const lensSize = size * 0.16;
+  // Sized from eyeGap (not a raw fraction of `size`) and capped well below it, so the two
+  // lenses can never meet or overlap into a single solid shape — the previous geometry had
+  // lensSize > eyeGap, which merged both lenses (plus the bridge) into one dark blob
+  // covering the upper face. A lens at 62% of eyeGap always leaves a clear bridge gap.
+  const lensSize = eyeGap * 0.62;
   const eyeCenterY = eyesTop + eyeSize / 2;
   const lensTop = eyeCenterY - lensSize / 2;
   const leftCenterX = size / 2 - eyeGap / 2;
@@ -315,17 +323,20 @@ function HairFront({ hairstyle, hairColor, size, headTop, headLeft, headSize, cr
 
   // Curly: a cluster of circles arranged around the head's upper arc (not stacked above
   // it), so curls read as hair wrapping the head rather than three balls floating on top.
+  // The angle range and vertical compression are both tuned to keep every curl's lowest
+  // edge above the eyebrow line (same margin the crown-based styles keep), even the
+  // side-most curls nearest the temples.
   const curlSize = headSize * 0.32;
   const curlRadius = headSize / 2 + curlSize * 0.22;
   const centerX = headLeft + headSize / 2;
-  const centerY = headTop + headSize * 0.42;
-  const angles = [200, 240, 270, 300, 340];
+  const centerY = headTop + headSize * 0.34;
+  const angles = [215, 243, 270, 297, 325];
   return (
     <>
       {angles.map((angleDeg) => {
         const angle = (angleDeg * Math.PI) / 180;
         const cx = centerX + curlRadius * Math.cos(angle);
-        const cy = centerY + curlRadius * Math.sin(angle) * 0.82;
+        const cy = centerY + curlRadius * Math.sin(angle) * 0.68;
         return (
           <View
             key={angleDeg}
